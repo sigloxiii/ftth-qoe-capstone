@@ -224,10 +224,10 @@ __marimo__/
 *.gz
 *.parquet
 
-# Bloquea CSVs gigantes en raíz y data, pero PERMITE samples
+# Bloquea CSVs gigantes en raíz y data, pero PERMITE samples y fiber_units
 data/*.csv
 !data/sample*.csv
-!data/processed/*.csv
+!data/fiber_units.csv
 
 # Permite imágenes de evidencia (png/jpg para docs)
 !docs/evidence/*.png
