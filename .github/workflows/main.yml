@@ -10,4 +10,4 @@ jobs:
           python-version: '3.11'
       - run: pip install pandas jupyter nbconvert
       - run: jupyter nbconvert --to notebook --execute python/01_process.ipynb --output /tmp/executed.ipynb
-      - run: echo "Notebook ejecutado OK - ROOT absoluto funcionó"
+      - run: echo "OK - pathlib absoluto funciono"
