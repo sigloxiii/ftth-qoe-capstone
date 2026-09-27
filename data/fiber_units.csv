@@ -1,4 +1,4 @@
-﻿Unit ID,ISP,Technology,State,Census,timezone_offset,timezone_offset_dst,Download,Upload,Whitebox Model
+﻿unit_id,isp,technology,state,census,timezone_offset,timezone_offset_dst,download,upload,whitebox_model
 447,Verizon,Fiber,PA,Northeast,-5,-4,75.0,75.0,wnr3500l-high
 1014,Verizon,Fiber,NJ,Northeast,-5,-4,100.0,100.0,wnr3500l-high
 5521,Verizon,Fiber,MD,South,-5,-4,100.0,100.0,wnr3500l-high
