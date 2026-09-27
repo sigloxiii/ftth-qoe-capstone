@@ -88,7 +88,6 @@ rtt_p95 = la película de todo tu día, quedándote con el peor momento que sí 
 
 
 
-
 ### 4. risk_flag - ¿Este cliente de fibra es probable que se vaya? (churn)
 **indicador indirecto que las empresas utilizan para predecir cuándo un cliente está a punto de abandonar el servicio (churn)
 
