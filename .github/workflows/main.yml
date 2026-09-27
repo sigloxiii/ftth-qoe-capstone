@@ -8,6 +8,9 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - run: |
+          ls -R
+          echo "---"
+          cat python/01_process.ipynb | head -100
       - run: pip install pandas jupyter nbconvert
-      - run: jupyter nbconvert --to notebook --execute python/01_process.ipynb --output /tmp/executed.ipynb
-      - run: echo "OK - pathlib absoluto funciono"
+      - run: jupyter nbconvert --to notebook --execute python/01_process.ipynb --output /tmp/executed.ipynb --debug
