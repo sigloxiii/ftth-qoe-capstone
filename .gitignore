@@ -216,3 +216,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# --- CAPSTONE FTTH - FCC MBA 6.8GB ---
+# Bloquea archivos originales gigantes
+*.tar.gz
+*.zip
+*.gz
+*.parquet
+
+# Bloquea CSVs gigantes en raíz y data, pero PERMITE samples
+data/*.csv
+!data/sample*.csv
+!data/processed/*.csv
+
+# Permite imágenes de evidencia (png/jpg para docs)
+!docs/evidence/*.png
+!docs/evidence/*.jpg
+!docs/*.png
