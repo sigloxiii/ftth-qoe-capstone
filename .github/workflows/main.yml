@@ -1,0 +1,12 @@
+name: Test Notebook
+on: [push]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install pandas jupyter
+      - run: jupyter nbconvert --to notebook --execute python/01_process.ipynb --output /tmp/test.ipynb
