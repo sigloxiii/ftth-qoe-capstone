@@ -1,10 +1,12 @@
 # FTTH QoE Risk & Support Cost Optimization
 > **From Network Telemetry to Churn Prevention and OPEX Reduction — Methodology v2.0 (Bias-Corrected)**
 
-[[License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-[[Data Source: FCC MBA](https://img.shields.io/badge/Data-FCC%20MBA%202023--2024-blue)](https://www.fcc.gov/general/measuring-broadband-america)
-[[Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org)
-[[Status](https://img.shields.io/badge/Status-v2.0%20Corrected-green)](./docs/postmortem_convenience_biasv1.md)
+
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Data Source: FCC MBA](https://img.shields.io/badge/Data-FCC%20MBA%202023--2024-blue)](https://www.fcc.gov/general/measuring-broadband-america)
+[![Python](https://img.shields.io/badge/Python-3.11%2B-blue)](https://www.python.org)
+[![Status](https://img.shields.io/badge/Status-v2.0%20Corrected-green)](./docs/postmortem_convenience_biasv1.md)
+
 
 **September 2026 - Eng. Rafael Cansigno Peláez**
 **Project Type:** Google Data Analytics Capstone | Track B (Self-directed)
@@ -21,7 +23,7 @@ We discovered this creates a **severe convenience bias**: the first 1000 records
 
 **Impact:** The `risk_flag` calculated in v1 did not measure real FTTH degradation during peak hours, it measured CPE obsolescence. It overestimated risk by ~3.2x and invalidated the truck roll savings model.
 
-**Corrective Action:** All v1 code was preserved intact in `/data/methodology_v1_FAILED/` as audit evidence. This v2.0 implements stratified probabilistic sampling. See full analysis in [`docs/05_postmortem_convenience_bias.md`](./docs/05_postmortem_convenience_bias.md).
+**Corrective Action:** All v1 code was preserved intact in `/data/methodology_v1_FAILED/` as audit evidence. This v2.0 implements stratified probabilistic sampling. See full analysis in [`docs/postmortem_convenience_biasv1.md`](./docs/postmortem_convenience_biasv1.md).
 
 This correction is a core part of the **Prepare & Process** phases of the Google framework.
 
@@ -70,29 +72,7 @@ Raw CSVs >2.5GB/month excluded. See `data/README.md` for reproduction steps.
 
 ### 📁 Repository Structure v2.0
 ```text
-├── README.md
-├── README_ES.md
-├── data/
-│   ├── methodology_v1_FAILED/      # EVIDENCE - Original biased code
-│   │   └── README.md
-│   └── methodology_v2_CORRECTED/
-│       ├── sampling_manifest.csv   # 285 unit_id + seed=42
-│       └── data_dictionary.md
-├── notebooks/
-│   ├── 01_ingest_v2_corrected.ipynb
-│   ├── 02_process_p95_v2.ipynb
-│   └── 03_analyze_risk_v2.ipynb
-├── sql/
-│   ├── p95_per_unit_corrected.sql
-│   └── enrollment_age_audit.sql
-├── docs/
-│   ├── 04_methodology_v2.md
-│   ├── 05_postmortem_convenience_bias.md  # MAIN FINDING
-│   └── evidence/
-│       ├── dist_enrollment_v1_vs_v2.png
-│       └── p95_comparison.png
-├── dashboards/
-│   └── FTTH_QoE_v2.twbx
-└── python/
-    └── corrected_ingest.py
-```
+
+
+
+REBUILD LATER
