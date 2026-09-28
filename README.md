@@ -71,8 +71,29 @@ Raw CSVs >2.5GB/month excluded. See `data/README.md` for reproduction steps.
 | **6. Act** | NOC alert | **Fix:** Remote triage workflow + protocol to discard obsolete CPE before truck roll. |
 
 ### 📁 Repository Structure v2.0
-```text
-
-
-
-REBUILD LATER
+```ftth-qoe-risk-optimization/
+├── .github/
+├── dashboards/
+├── data/
+│   ├── README.md                           # <- linaje 6.8GB (con evidencias)
+│   ├── fiber_units.csv                     # <- población (source of truth)
+│   ├── sampling_manifest.csv               # <- 285 units + seed 42 (reproducibilidad)
+│   ├── data_dictionary.md                  # <- diccionario corregido
+│   ├── ftth_clean_for_sql.csv              # <- 5k rows P95-ready para SQL/Power BI
+│   ├── excluded_legacy_units.csv           # <- 52 units <2018 audit trail
+│   └── methodology_v1_FAILED/              # <- evidencia del sesgo
+│       ├── README.md
+│       └── v1_sample_1000_rows.csv
+├── docs/
+│   └── evidence/
+│       ├── contenido_tar_6.8GB.png         # <- tu captura TAR 6.8GB
+│       └── validated-data-sept2022_filelist.png
+│   └── postmortem_convenience_biasv1.md
+├── python/
+│   └── corrected_ingest.py                 # <- pipeline v2 con seed 42
+├── sql/
+│   └── p95_per_unit_corrected.sql
+├── notebooks/
+├── .gitignore                              # <- bloquea los 6.8GB
+├── LICENSE                                 # <- fix YEAR/HOLDER
+└── README.md                               # <- root readme con estructura real

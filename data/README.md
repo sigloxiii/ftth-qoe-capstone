@@ -15,7 +15,7 @@ This document describes the full data lineage, from raw source to analysis-ready
 - **Compressed:** 6.8GB archive
 - **Decompressed:** 6,812,728,506 bytes / 16 files
 - **Source:** FCC MBA / SamKnows validated data - September 2022
-- **Location (local, git-ignored):** `data/raw/validated-data-sept2022/`
+- **Location (local, git-ignored):** `data/validated-data-sept2022/`
 
 #### Evidence 1: TAR content (6.8GB total)
 ![TAR content - 6.8GB decompressed](../docs/evidence/contenido_tar_6.8GB.png)
