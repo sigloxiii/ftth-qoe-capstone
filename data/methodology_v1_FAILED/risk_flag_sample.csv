@@ -1,0 +1,1 @@
+﻿unit_id,dtime,ddate,target,rtt_avg,rtt_min,rtt_max,rtt_std,successes,failures,packet_loss_pct,hour,is_peak_hour,rtt_p95,risk_flag

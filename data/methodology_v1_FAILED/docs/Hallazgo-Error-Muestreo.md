@@ -18,6 +18,12 @@ Metodología de muestreo por conveniencia: `head(1000)`.
 - El archivo original está ordenado por `unit_id`. Las primeras 1000 filas pertenecen a 2 whiteboxes DSL/Cable (IDs: 26226437, 52849181).
 - `fiber_units.csv` filtrado a Fiber solo contiene 285 IDs diferentes (IDs: 447, 1014, 5521...).
 - **Overlap:** 0 coincidencias entre `sample1000_curr_ping.csv` y `fiber_units.csv`.
+Por qué es sesgo de conveniencia:
+FCC MBA ordena los unit_id por antigüedad de enrolamiento. Los primeros 1000 = Whiteboxes de 2012-2016. En 2023-2024 esos equipos:
+
+Tienen hardware desfasado (SamKnows v1)
+Están en hogares con planes antiguos <100 Mbps
+Sobrevivencia sesgada: solo quedan los que no han hecho churn
 
 Al hacer:
 ```python
