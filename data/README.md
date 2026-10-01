@@ -68,7 +68,7 @@ This document describes the full data lineage, from raw source to analysis-ready
 | Upload | float | Provisioned up Mbps | 75, 100... | |
 | Whitebox Model | string | Whitebox hardware | skwb8, ac1750v2, wnr3500l-high | **Crítico para Hardware Capability Filter** |
 
-### 2. Transformación a `fiber_units.csv` y `fiber_units_clean.csv` - Proceso con Excel (Auditado)
+### 2. Transformación a `fiber_units.csv`  - Proceso con Excel (Auditado)
 
 **Fuente:** `unit-profile-sept2022.xlsx` (XLSX oficial FCC, no el TAR de 6.8GB)
 
@@ -79,7 +79,7 @@ This document describes the full data lineage, from raw source to analysis-ready
 3. Filtro 2 - Columna `Whitebox Model` IN (`ac1750v2`, `skwb8`, `skwb8p`) → 258 unidades Gigabit-capables
 4. Copiado de filas visibles a hoja nueva (solo valores visibles)
 5. `Datos > Quitar duplicados > Unit ID` → 0 duplicados, 258 únicos validados
-6. Guardado como `CSV UTF-8 (delimitado por comas)` → `data/fiber_units_clean_essential.csv`
+6. Guardado como `CSV UTF-8 (delimitado por comas)` → `data/fiber_units.csv`
 
 #### Evidencia: Filtrado por modelo en Excel (Hardware Capability Filter v2.1)
 
@@ -92,6 +92,7 @@ This document describes the full data lineage, from raw source to analysis-ready
     - `ac1750v2`: 28 (11%)
     - `skwb8p`: 3 (1%)
 - `excluded_legacy_units.csv`: 27 filas excluidas (`wnr3500l-high`, `wdr3600`, `wr1043nd`, etc.)
+  -All the excluded whiteboxes, it will be used to compare in the future
 
 **Validación:**
 - `Unit ID` únicos: 258
