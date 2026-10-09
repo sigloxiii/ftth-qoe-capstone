@@ -18,6 +18,10 @@ This project uses FCC Measuring Broadband America (MBA) telemetry from September
 
 The analysis focuses on three metrics measured in the local evening peak window: latency (P95), jitter (P95) and packet loss.
 
+We use Latency P95 instead of average because average hides the problem. Average lies, You can have 15ms average and still have 180ms spikes 5% of the time. The user doesn't remember the average, they remember the lag spike.
+
+P95 = 95% of the time you were BELOW that value. It forces you to look at the tail of the distribution, which is where bad QoE lives.
+
 **Current status:** Methodology v3.0 is specified (`docs/metrics_spec.md`). The pipeline is being rebuilt from the raw data. **No results are published yet**; they will be added only after the data inspection step and the Python ↔ Power BI reconciliation are complete.
 
 ## 2. Why Version 3 Was Necessary
@@ -125,7 +129,7 @@ Raw data: FCC MBA validated data, September 2022 (13th Measuring Broadband Ameri
 
 - [`docs/metrics_spec.md`](docs/metrics_spec.md): metric definitions, data quality rules, reconciliation protocol.
 - [`archive/`](archive/): v1 and v2 findings, kept as a record of the iteration.
-- [Previous repository](https://github.com/sigloxiii/ftth-qoe-risk-optimization) (archived).
+- [`docs/glossary_of_terms.md`](docs/glossary_of_terms.md): Glossary of terms.
 
 ## 10. License
 
