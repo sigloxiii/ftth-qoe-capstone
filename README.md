@@ -1,3 +1,13 @@
+![ftth-qoe-capstone banner](./assets/main_banner.jpg)
+
+# ftth-qoe-capstone
+### FCC QoE Risk Analysis / Análisis de Riesgo QoE
+
+**Autor:** Eng. Rafael Cansigno P. | Data Analyst | Telecom + BI  
+**Stack:** Python | Power BI | VSC | SQL
+
+**KPIs:** P95 Latency | Jitter | Packet Loss
+
 # FTTH QoE Risk Analysis
 
 > Identifying fiber (FTTH) subscribers at risk of poor Quality of Experience (QoE) from FCC Measuring Broadband America telemetry, using a reproducible and auditable pipeline.
