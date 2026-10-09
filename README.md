@@ -1,228 +1,132 @@
-# FTTH QoE Risk & Support Cost Optimization
+# FTTH QoE Risk Analysis
 
-> **From Network Telemetry to Churn Prevention and OPEX Reduction — Methodology v2.2 CORRECTED (Power BI Audit + Python Fix)**
-> **Evolución: v1 FAILED → v2 → v2.1.3 FINAL (Hardware-Corrected) → v2.2 CORRECTED (Loss-Calculation-Corrected)**
+> Identifying fiber (FTTH) subscribers at risk of poor Quality of Experience (QoE) from FCC Measuring Broadband America telemetry, using a reproducible and auditable pipeline.
 
-[[License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [[Data Source: FCC MBA](https://img.shields.io/badge/Data-FCC%20MBA%202023--2024-blue)](https://www.fcc.gov/general/measuring-broadband-america) [[Status](https://img.shields.io/badge/Status-v2.2%20CORRECTED-green)](https://github.com/sigloxiii/ftth-qoe-risk-optimization)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![Data: FCC MBA Sept 2022](https://img.shields.io/badge/Data-FCC%20MBA%20Sept%202022-blue)
+![Status: Methodology v3 in progress](https://img.shields.io/badge/Status-Methodology%20v3%20in%20progress-orange)
 
-**September-October 2026 - Eng. Rafael Cansigno Peláez** | **Google Data Analytics Capstone - Track B (Self-directed)**
-
----
-
-## Project Overview
-
-This Capstone turns FCC Measuring Broadband America telemetry into actionable decisions for FTTH operators: which units are at real risk of poor QoE and which truck rolls can be avoided.
-
-**Problem v1:** Raw measurements mix true fiber degradation with false latency/loss created by legacy Whiteboxes.
-
-**Solution v2.1.3:** Hardware filtering in Excel + peak-hour analysis (19-23h local) + FCC-aligned QoE thresholds.
-
-**Problem v2.1.3 discovered via Power BI audit:** `packets` count was used as percentage, generating 1005% loss, and `Merge1` had `Query Errors`.
-
-**Solution v2.2 CORRECTED:** Power BI audit → Python fix → coincidencia total. Loss calculation `packets/10` with 100% capping, null handling with `try...otherwise`.
-
-**Final Output v2.2:** `output/ftth_final_258_v2_2_CORRECTED.csv` - 258 units, 89 at risk (>1% definition), 26 at severe risk (>10%), ready for PowerBI.
+**Author:** Rafael Cansigno Peláez · Google Data Analytics Capstone (Track B, self-directed) · September–October 2026
 
 ---
 
-### Methodological Reconstruction Note (Cronología)
+## 1. Project Summary
 
-> **Rebuilt September 27 - October 2, 2026. v2.2 is definitive and audits v2.1.3.**
+This project uses FCC Measuring Broadband America (MBA) telemetry from September 2022 to answer one question:
 
-#### v1 FAILED - Convenience Bias (Sept 2026)
-Reading FCC monthly files with only first 1000 rows captured legacy 2012-2016 enrollments. Overestimated risk 3.2x.
+> Which FTTH units show degraded QoE during peak hours, and how much of that degradation is real versus an artifact of the measurement instrument or the analysis?
 
-#### v2 REFINED - Instrument Bias (Sept 2026)
-`fiber_units.csv` historically ordered. Legacy Whiteboxes with low CPU and FastEthernet saturate during tests, creating false latency/loss.
+The analysis focuses on three metrics measured in the local evening peak window: latency (P95), jitter (P95) and packet loss.
 
-#### v2.1 Solution - Hardware Filter in Excel (30/09/2026)
-Filtering done in Excel from `unit-profile-sept2022.xlsx`, evidenced in `docs/evidence/filtrado_fiber_units.png`. Only gigabit-capable models retained.
+**Current status:** Methodology v3.0 is specified (`docs/metrics_spec.md`). The pipeline is being rebuilt from the raw data. **No results are published yet**; they will be added only after the data inspection step and the Python ↔ Power BI reconciliation are complete.
 
-| Mode | Effect |
-| :--- | :--- |
-| v1 Convenience Bias | Captured obsolete CPE |
-| v2 Hardware Bottleneck | False latency/loss |
-| **v2.1 Excel Filter** | **Real FTTH QoE** |
+## 2. Why Version 3 Was Necessary
 
-v2.1 reduces from 285 to 258 valid units. 27 legacy units excluded. v1 code preserved in `/data/methodology_v1_FAILED/`.
+The project went through two methodology iterations. Each one found a real problem, and the audit of the second one showed that patching it was less reliable than rebuilding it on a single, verified specification.
 
-#### v2.1.3 FINAL - Hardware-Corrected (01/10/2026) - ORIGINAL VIGENTE
-Final export `data/methodology_v2/ftth_final_258_v2_1.csv` - 257 units, 17 at risk (6.6%), ready for PowerBI. Business Impact: avoids ~37 false truck rolls = ~$6,660 OPEX saved.
+| Version | What it did | What it revealed |
+| :--- | :--- | :--- |
+| **v1** | Read the first 1,000 rows of each monthly FCC file | **Convenience bias:** the sample was dominated by legacy enrollments, not representative of the fleet |
+| **v2 / v2.1.3** | Filtered FTTH units by hardware (285 → 258) and flagged risk by latency only | **Instrument bias solved:** legacy Whiteboxes (low CPU, FastEthernet) created false latency and loss. **New problem:** packet loss was computed from a raw count (`packets`) treated as a percentage |
+| **v2.2** | Patched loss with `packets/10`, capped at 100%, and filled nulls with 0 | **Patch masked data issues** and left the two implementations inconsistent (details below) |
+| **v3** | Single specification, single implementation, verified inputs | Current version |
 
-**Este fue tu README vigente hasta ayer.**
+### Findings that drove the rebuild
 
-#### v2.2 CORRECTED - Loss-Calculation-Corrected (02/10/2026) - AUDITORÍA POWER BI
-**Descubrimiento:** Durante construcción de dashboard en Power BI `powerbianalysis.pbix`, `Merge1` mostró `Query Errors - 1 row` y `curr_udpcloss` mostró `packets = 10055, 10330, 4481` → 1005% loss.
+1. **Loss metric was not verified.** In v2.1.3, values such as `10055` were read as 1,005% loss. The v2.2 fix assumed 1,000 datagrams per test (`packets/10`) without confirming the field definition in the FCC data dictionary. Official MBA documentation describes latency tests sending roughly 2,000 packets per hour, which contradicts that assumption.
+2. **Corrections hid problems instead of exposing them.** Capping values at 100% turned corrupt counters into "total loss", and `fillna(0)` made a unit with no data look perfect (0 ms latency, 0 ms jitter).
+3. **Python and Power BI implemented the metrics differently.** The documented versions differed in the UTC offset used (`timezone_offset` vs `timezone_offset_dst`; September is under daylight saving time), the peak window (19:00–22:59 vs 19:00–23:59) and the loss source (`curr_udplatency` failures/successes vs `curr_udpcloss` packets). Matching totals could not prove they matched unit by unit.
+4. **Risk thresholds changed without justification.** The flag moved from latency > 20 ms / jitter > 15 ms / loss > 1% to latency > 50 ms / jitter > 5 ms / loss > 1%. With the observed distribution, the jitter condition never triggered and the latency condition triggered for a single unit, so the result depended almost entirely on the unverified loss metric.
+5. **Results were not reproducible from the repository.** The scripts that generated the datasets were not versioned, several documents cited files that did not exist, and key figures (units at risk, mean loss) differed across documents.
 
-**Root Cause:** En Python original que generó `ftth_final_258_v2_1.csv`:
-```python
-df_loss['loss_pct'] = df_loss['packets']  # BUG: conteo como %
-```
-Y en Power Query:
-```m
-= Table.AddColumn(#"Filtered Rows", "loss_pct", each [packets] / 1000 * 100) // 10055 -> 1005.5%
-```
-Más referencia incorrecta: `Added Custom` leía de `#"Replaced Value"` en lugar de `#"Replaced Value2"`.
+### What v3 changes
 
-**Corrección v2.2 (Power BI audit → Python fix):**
-```m
-// Power BI CORRECTED
-= Table.AddColumn(#"Filtered Rows", "loss_pct", each if [packets] > 1000 then 100 else [packets] / 10, type number)
-```
-```python
-# Python CORRECTED - replica exacta
-df_closs['loss_pct'] = np.where(df_closs['packets'] > 1000, 100, df_closs['packets']/10)
-df['p95_latency_ms'] = df['p95_latency_ms'].fillna(0) # replica Replaced Value
-```
+- **One specification** (`docs/metrics_spec.md`) that defines every metric, window and threshold. Code follows the spec, never the other way around.
+- **One implementation** of each transformation, in Python. Power BI only visualizes the processed output.
+- **Data inspection first:** column definitions and units are verified against the FCC documentation before any metric is computed.
+- **No capping and no zero-filling.** Invalid records are excluded and counted in a data-quality log; units without enough data are reported separately, not scored.
+- **Unit-level reconciliation** between Python and Power BI (per `Unit ID`, with explicit tolerances), instead of comparing totals.
+- **Parameterized thresholds** with a sensitivity analysis. They are project-defined operating thresholds, not values attributed to a standard until verified in the source.
 
-**Resultado coincidente:** Power BI y Python ahora dan 34.50% riesgo >1% y 10.08% riesgo severo >10%.
+## 3. Methodology v3 (Summary)
 
----
+Full definitions are in [`docs/metrics_spec.md`](docs/metrics_spec.md).
 
-### Hardware Selection Logic (v2.1 - Se mantiene)
+**Population**
+- FTTH units from the FCC Sept 2022 unit profile (285), filtered to gigabit-capable Whitebox models (`skwb8`, `skwb8p`, `ac1750v2`) → **258 units**. The 27 excluded legacy units are kept for audit.
+- Rationale: the Whitebox is the measurement instrument. A device that cannot forward traffic at line rate creates the degradation it reports.
 
-**Core Principle:** The Whitebox is the measurement instrument. If it cannot forward at line rate, it creates the degradation.
+**Peak window**
+- `dtime` is UTC. Local time = `dtime + timezone_offset_dst`. Peak window: local hour ≥ 19 and < 23.
 
-Audit of `fiber_units.csv` (285 units) - 30/09/2026:
+**Metrics (per unit, peak window only)**
+- `p95_latency_ms`: 95th percentile of `rtt_avg` (µs → ms).
+- `p95_jitter_ms`: 95th percentile of the average of up/down jitter (µs → ms).
+- `loss_pct`: `sum(failures) / sum(successes + failures) × 100` (ratio of sums, weighted by packets).
 
-| Model | Count | Real HW Cap | Status |
-| :--- | :--- | :--- | :--- |
-| **skwb8** | 227 | >900 Mbps | INCLUDE - Gold standard, quad-core, HW NAT |
-| **skwb8p** | 3 | >1000 Mbps | INCLUDE - 2.5GbE |
-| **ac1750v2** | 28 | ~550 Mbps | INCLUDE - HW NAT, 1.1x margin at 500 Mbps |
-| wnr3500l-high | 17 | <95 Mbps | EXCLUDE - 480MHz CPU 2009 |
-| wdr3600 | 6 | ~180 Mbps | EXCLUDE - No HW NAT |
-| wr1043nd/wr741nd | 4 | 100 Mbps FE | EXCLUDE - FastEthernet |
+**Risk definition (provisional)**
+- `risk_flag = 1` if any metric exceeds its threshold. Thresholds live in `config.yaml` and are finalized after reviewing the observed distributions; a sensitivity table (latency × loss) is reported with every result.
+- A second tier (`risk_severe`) separates extreme cases.
 
-**Total Valid: 258 (90.5%) | Excluded: 27 (9.5%)**
+## 4. Tools
 
-Filtering done in Excel. Full deep dive in `docs/hardware_audit.md`.
+Python (pandas, DuckDB) · Parquet · Power BI · SQL Server (planned) · Excel · Visual Studio Code · Git/GitHub
 
-**Rule v2.1:** Include only `skwb8`, `skwb8p`, `ac1750v2` with capacity >= provisioned speed * 1.1.
-
----
-
-### QoE Parameters - Evolución de Definición
-
-#### v2.1.3 Definition (Original Vigente)
-
-**Source:** FCC MBA validated Sept 2022. Peak window 19-23h local.
-
-**Metrics:**
-- **p95_latency_ms:** P95 latency peak. Raw `rtt_avg` microseconds → ms.
-- **p95_jitter_ms:** P95 jitter avg up/down peak. Raw microseconds → ms.
-- **avg_loss_pct:** Mean loss peak. `failures / (successes+failures) *100`.
-
-**Thresholds FCC + ITU-T (ITU-T G.114 / Y.1541, FCC 13th Report):**
-- Latency: Fiber median 12-15ms, P95 18-22ms. Gaming <20ms. **Risk if >20ms.**
-- Jitter: Degraded Zoom if **>15ms**.
-- Loss: Degraded if **>1%**.
-
-**Risk Flag v2.1.3 FINAL:**
-> For Capstone Project 1, risk_flag = 1 if p95_latency_ms > 20.0 else 0
-> Jitter >15ms and Loss >1% documented for v2.2 evolution.
-
-**Final Dataset v2.1.3:** `data/methodology_v2/ftth_final_258_v2_1.csv` - 257 rows, 17 at risk (6.6%), mean latency 12.47ms, mean jitter 1.10ms.
-
-#### v2.2 CORRECTED Definition (Auditoría Actual)
-
-**Mismo source, pero con corrección de cálculo y hora pico 19-22h local (Time.Hour + timezone_offset):**
-
-**Metrics corregidos:**
-- **p95_latency_ms:** 0 nulls (Replaced Value)
-- **p95_jitter_ms:** 0 nulls (Replaced Value1)
-- **avg_loss_pct:** `if [packets] >1000 then 100 else [packets]/10` → min 0%, max 71.53%, mean 4.11%, 0 filas >100% (Replaced Value2)
-
-**Risk Flag v2.2 CORRECTED:**
-```m
-risk_flag = 1 if p95_latency_ms > 50 or p95_jitter_ms > 5 or avg_loss_pct > 1 else 0
-risk_severo = 1 if p95_latency_ms > 50 or p95_jitter_ms > 5 or avg_loss_pct > 10 else 0
-```
-- >1% = definición ITU-T G.114 estricta = **34.50% (89/258)**
-- >10% = definición severa, comparable a 6.61% previo = **10.08% (26/258)**
-
-**Comparativa v2.1.3 vs v2.2:**
-
-| Versión | Fórmula risk_flag | Resultado | Archivo |
-|---|---|---|---|
-| v2.1.3 FINAL | latency >20 | 6.6% (17/257) | ftth_final_258_v2_1.csv (con bug de conteo) |
-| v2.1.3 con truco | latency>20 or packets>160 | 6.61% (17/258) artefacto | - |
-| **v2.2 CORRECTED** | latency>50 or jitter>5 or loss>1% | **34.50% (89/258)** | ftth_final_258_v2_2_CORRECTED.csv |
-| **v2.2 SEVERO** | latency>50 or jitter>5 or loss>10% | **10.08% (26/258)** | mismo archivo |
-
-Full math in `docs/procedimiento_matematico_v2_1_3.md` y `docs/Bitacora_PowerBI_FTTH_v2_1_CORRECTED.md`.
-
----
-
-### Repository Structure (Combinado)
+## 5. Repository Structure
 
 ```
-/
+ftth-qoe-capstone/
 ├── data/
-│   ├── fiber_units.csv (258 valid filtered in Excel)
-│   ├── methodology_v2/
-│   │   ├── ftth_final_258_v2_1.csv (v2.1.3 FINAL, 257 rows, 17 risk, CON BUG para trazabilidad)
-│   │   └── ftth_final_258_v2_2_CORRECTED.csv (v2.2 CORRECTED, 258 rows, 89 risk >1%, 26 severo >10%)
-│   ├── methodology_v1_FAILED/
-│   └── raw/ (gitignored, 6.8GB FCC)
-├── powerbi/
-│   ├── powerbianalysis.pbix (v2.2 CORRECTED: Replaced Value2 + capping)
-│   └── evidence/
-│       ├── Errors in Merge1.png
-│       └── curr_udpcloss packets 10055.png
+│   ├── reference/        # fiber_units.csv, excluded legacy units
+│   ├── interim/          # Parquet intermediates (gitignored)
+│   └── processed/        # final unit-level dataset
+├── src/                  # pipeline (single implementation)
+├── tests/                # data-quality and consistency tests
 ├── docs/
-│   ├── evidence/filtrado_fiber_units.png (v2.1 hardware filter)
-│   ├── hardware_audit.md (v2.1)
-│   ├── procedimiento_matematico_v2_1_3.md (v2.1.3)
-│   ├── Bitacora_PowerBI_FTTH_v2_1_CORRECTED.md (v2.2 audit detailed)
-│   ├── HALLAZGO_Bug_PowerBI_Python.md (v2.2 discovery)
-│   ├── data_dictionary.md
-│   └── powerbi_model.md
-├── scripts/
-│   ├── original_script_con_bug.py (v2.1.3 - avg_loss = packets)
-│   └── fix_python_ftth_v2_1_CORRECTED.py (v2.2 - packets/10 con tope 100)
-├── README.md (este archivo combinado cronológico)
+│   ├── metrics_spec.md   # source of truth for all metrics
+│   ├── evidence/         # screenshots of the data preparation
+│   └── lessons_learned.md
+├── powerbi/              # dashboard (consumes processed data only)
+├── archive/              # superseded material (v1, v2), not used by the pipeline
+├── config.yaml           # thresholds and parameters
 └── LICENSE
 ```
 
----
+Raw FCC data (6.8 GB) is not stored in the repository. Its local path is set in `config.local.yaml` (gitignored).
 
-### PowerBI & Python - Cómo Reproducir (v2.2)
+## 6. Reproducibility
 
-**Opción A: Power BI (Auditable)**
-1. Abrir `powerbi/powerbianalysis.pbix`
-2. `curr_udpcloss` -> Added Custom1: `if [packets] > 1000 then 100 else [packets]/10`
-3. `Merge1` -> Replaced Value, Value1, Value2 -> Added Custom: `try...otherwise false` + referencia `Replaced Value2`
-4. Refresh -> Exportar
+Raw data: FCC MBA validated data, September 2022 (13th Measuring Broadband America report), including `curr_udplatency.csv`, `curr_udpjitter.csv` and `curr_udpcloss.csv`.
 
-**Opción B: Python (Corregido - coincide)**
-```bash
-python scripts/fix_python_ftth_v2_1_CORRECTED.py
-# Valida: max 71.53%, mean 4.11%, risk 34.50% >1%, 10.08% >10%
-```
+1. Download and extract the three files listed above.
+2. Set `raw_dir` in `config.local.yaml`.
+3. Run the pipeline (command will be documented here once the pipeline is complete).
+4. Validate with the tests in `tests/`.
 
----
+## 7. Roadmap
 
-### Para la Tesis - Texto Cronológico
+- [x] Hardware filter and population definition (258 units)
+- [x] Metrics specification v1.0.0
+- [x] Repository restructure and archive of previous versions
+- [ ] Data inspection of raw files (column definitions, units, `packets` field)
+- [ ] Pipeline: raw → Parquet → unit-level metrics
+- [ ] Data-quality log and automated tests
+- [ ] Threshold selection from observed distributions, with sensitivity analysis
+- [ ] Power BI dashboard and unit-level Python ↔ Power BI reconciliation
+- [ ] Results and findings section
 
-> "Metodología v2.1.3 FINAL filtró hardware en Excel quedando 258 unidades válidas (skwb8, skwb8p, ac1750v2) y definió riesgo como p95_latency >20ms (6.6% en riesgo). Durante auditoría para dashboards en Power BI v2.2 se detectó bug en curr_udpcloss: `packets` (conteo) usado como % generando 1005% y Query Errors por referencia incorrecta a Replaced Value. Se corrigió en Power Query con `if [packets]>1000 then 100 else [packets]/10` (1000 datagramas FCC MBA) y manejo de nulls con try...otherwise, replicado en Python con `np.where` y `fillna(0)`. Resultado coincidente: 34.5% riesgo con definición ITU-T >1% y 10.08% riesgo severo >10%, este último equivalente justificado al 6.61% reportado previamente con umbral `>160 paquetes`."
+## 8. Limitations
 
----
+- Single month (September 2022) and a non-random sample of volunteer units; results do not generalize to all FTTH subscribers.
+- Hardware suitability is based on the nominal capability of each Whitebox model, not on a per-unit throughput test.
+- Risk thresholds are project-defined and their sensitivity is part of the reported results.
 
-### ✅ Checklist Entrega Cronológica
+## 9. Documentation Index
 
-- [x] v1 FAILED documentado (convenience bias)
-- [x] v2.1 hardware filter en Excel (27 excluidas, evidencia png)
-- [x] v2.1.3 FINAL 17/257 = 6.6% con latency >20
-- [x] v2.2 bug documentado con capturas Power BI (10055 packets, Errors in Merge1)
-- [x] Power BI corregido (capping + Replaced Value2)
-- [x] Python corregido (fillna + np.where) - coincidencia total
-- [x] CSV v2_2 258 filas, 0 nulls, 0 >100%, 34.5% / 10.08%
-- [x] README combinado cronológico (este)
+- [`docs/metrics_spec.md`](docs/metrics_spec.md): metric definitions, data quality rules, reconciliation protocol.
+- [`archive/`](archive/): v1 and v2 findings, kept as a record of the iteration.
+- [Previous repository](https://github.com/sigloxiii/ftth-qoe-risk-optimization) (archived).
 
----
+## 10. License
 
-### 👤 Autor
-
-Eng. Rafael Cansigno Peláez (CaPe) - FTTH QoE - Sept-Oct 2026
-Capstone Track B - v2.1.3 FINAL → v2.2 CORRECTED
+MIT. See [LICENSE](LICENSE).
