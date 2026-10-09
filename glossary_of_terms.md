@@ -67,3 +67,5 @@ This document provides a reference list of key industry standards, regulatory bo
 others?
 
 SAMKNOWS
+RTT (Round-Trip Time, tiempo de ida y vuelta)
+
