@@ -95,6 +95,14 @@ The data dictionary in the Technical Appendix does **not** define the unit-profi
 | `Download` / `Upload` | Provisioned tier, Mbps | Pending |
 | `Whitebox Model` | Measurement device model | Pending |
 
+### 2.5 Derived population files
+
+| File | Content | Rows |
+| :--- | :--- | ---: |
+| `data/fiber_units.csv` | FTTH units in scope (Technology = Fiber and gigabit-capable Whitebox model) | 258 |
+| `data/excluded_legacy_FTTH_units.csv` | FTTH units excluded because their Whitebox model is not considered reliable for measurement | 27 |
+| `data/excluded_legacy_units.csv` | All units of the unit profile that are out of scope: non-fiber units and fiber units that are not used. Includes the 27 above. Kept for audit; not read by the pipeline | n/a |
+
 ---
 
 ## 3. Cross-File Notes (Documented)

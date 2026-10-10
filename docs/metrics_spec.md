@@ -3,6 +3,8 @@
 **Version:** 1.1.0 · **Last reviewed:** 2026-10-10
 **Purpose:** Document what each column of each input file means, based on the official FCC documentation, and record what has been verified against the real files (Step 0 in `docs/metrics_spec.md`).
 
+TRADUCCION EJECTUABLE EN config.yaml
+
 **Changes in 1.1.0:** Step 0 results incorporated. Real headers compared with the FCC dictionary, time handling documented (new section 4), observed coverage for the 258 FTTH units added, verification checklist updated.
 
 **How to read the status labels**
