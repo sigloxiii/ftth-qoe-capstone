@@ -1,0 +1,193 @@
+# ==============================================================================
+# config.yaml - FTTH QoE Capstone | Methodology v3
+# ==============================================================================
+# PURPOSE OF THIS FILE
+# ---------------------
+# This file is the single, machine-readable source of truth for the entire
+# pipeline. It exists to fix the problems found in v1/v2 audit:
+#
+#  v1: Convenience bias - only first 1000 rows per monthly file were read
+#  v2: Instrument bias - legacy Whiteboxes (wnr3500l-high, wdr3600...) created
+#      false latency/loss because they cannot forward at line rate
+#  v2.1.3 -> v2.2: Loss was misinterpreted. `curr_udpcloss.packets` was treated
+#      as loss %, then patched as `packets/10`. FCC dictionary shows that file
+#      records outage events (duration + packets lost in event), NOT per-test
+#      loss %. Real loss comes from curr_udplatency: failures/(successes+failures)
+#  v2: Inconsistent implementations - Python used timezone_offset while Power BI
+#      used timezone_offset_dst, peak window 19-22:59 vs 19-23:59, different loss
+#      sources. Totals matched but unit-by-unit reconciliation failed.
+#  v2: Thresholds changed without justification (20ms->50ms latency).
+#
+# WHAT THIS FILE CONTAINS
+# -----------------------
+#  - Population definition (which Whitebox models are valid for FTTH)
+#  - Input file locations and real column names (validated in data/CSV_previews.md)
+#  - Time handling rules (dtime format, timezone source, peak window)
+#  - Metric definitions (formulas, units, transforms)
+#  - Provisional risk thresholds (parameterized, to be finalized after distribution analysis)
+#  - Data quality rules (no capping, no fillna(0), minimum samples)
+#
+# WHY YAML AND NOT HARDCODED IN PYTHON?
+# -------------------------------------
+#  - Auditable: One place to review all parameters
+#  - Reproducible: Same config + raw data = same results
+#  - Single implementation: Python reads this, Power BI consumes processed output only
+#  - No hidden fixes: Invalid records are excluded and logged, not capped at 100%
+#  - Sensitivity analysis: Change threshold here, git tracks it, rerun pipeline
+#
+# RELATED DOCS
+# ------------
+#  - docs/metrics_spec.md       -> Human-readable spec (this yaml is its executable version)
+#  - docs/data_dictionary.md   -> What each column means per FCC Technical Appendix
+#  - data/CSV_previews.md      -> Proof that real files match the dictionary (first 10 rows)
+#  - config.local.yaml         -> Machine-specific path to raw 6.8GB data (gitignored)
+#
+# NOTES ON REAL DATA (from CSV_previews.md - 2022-09-12 to 2022-10-31)
+# ---------------------------------------------------------------------
+#  - dtime is a datetime string "%Y-%m-%d %H:%M:%S", NOT unix epoch
+#  - ddate equals date(dtime) in preview, so TZ must come from unit-profile
+#  - timezone_offset_dst is in unit-profile, values like -14400 (seconds) or -4 (hours)
+#  - curr_udpcloss: duration ~4,500,000 us (4.5s) with packets=2-3 -> outage event
+#  - curr_udplatency: successes+failures varies 131 to 2365 per row -> supports ratio-of-sums
+#  - curr_udpjitter: jitter_up/down 218 to 55714 us (0.2-55.7ms), successes always 1/0
+# ==============================================================================
+
+project:
+  name: ftth-qoe-capstone
+  version: "3.1"
+  description: "From FTTH metrics to churn prevention and truck roll savings using FCC MBA"
+  raw_period_observed: "2022-09-12 to 2022-10-31"  # From actual preview, not limited to Sep 2022
+  author: "Eng. Rafael Cansigno P. | Google Data Analytics Capstone"
+
+# ------------------------------------------------------------------------------
+# POPULATION - Who is in scope
+# ------------------------------------------------------------------------------
+# Rationale: Whitebox is the measurement instrument. A device that cannot forward
+# at gigabit line rate creates the degradation it reports. We exclude legacy models
+# and keep only gigabit-capable ones. 285 total FTTH units -> 258 after filter.
+population:
+  source_file: "data/unit-profile-sept2022.xlsx"  # FCC unit profile (source of truth for model, ISP, TZ)
+  fiber_units_file: "data/fiber_units.csv"         # Derived: 258 filtered units
+  allowed_whitebox_models: ["skwb8", "skwb8p", "ac1750v2"]  # Gigabit-capable, confirmed by FCC specs
+  excluded_models: ["wnr3500l-high", "wdr3600", "wr1043nd", "wr741nd", "wr741ndv4"]  # Legacy, FastEthernet / low CPU
+  expected_counts:
+    total_ftth_raw: 285
+    total_ftth_filtered: 258
+    isps: { "Cincinnati Bell": 120, "Verizon": 76, "Frontier": 62 }
+
+# ------------------------------------------------------------------------------
+# INPUTS - Raw FCC files
+# ------------------------------------------------------------------------------
+# Raw data (6.8GB) is NOT stored in repo. Set path in config.local.yaml (gitignored)
+# Files validated against data/CSV_previews.md
+inputs:
+  raw_dir: null  # IMPORTANT: Override in config.local.yaml e.g., "D:/FCC_MBA_2022/raw"
+  files:
+    udplatency: "curr_udplatency.csv"  # Source for latency + loss
+    udpjitter: "curr_udpjitter.csv"    # Source for jitter
+    udpcloss: "curr_udpcloss.csv"      # Reference only - outage events, NOT loss metric
+  # Note: udpcloss is NOT used for loss calculation (see Finding #1 in README)
+
+# ------------------------------------------------------------------------------
+# COLUMNS - Real headers from first 10 rows (see CSV_previews.md Section 4)
+# ------------------------------------------------------------------------------
+# Differences vs FCC dictionary documented in preview:
+# - Dictionary lists location_id for udplatency, but real file does NOT have it
+# - Dictionary lists no ddate for udplatency/udpjitter, but real files DO have it
+# - Jitter file uses lowercase 'latency' vs 'Latency' in dictionary
+columns:
+  udplatency: ["unit_id", "dtime", "ddate", "target", "rtt_avg", "rtt_min", "rtt_max", "rtt_std", "successes", "failures"]
+  udpjitter: ["unit_id", "dtime", "ddate", "target", "packet_size", "stream_rate", "duration", "packets_up_sent", "packets_down_sent", "packets_up_recv", "packets_down_recv", "jitter_up", "jitter_down", "latency", "successes", "failures"]
+  udpcloss: ["unit_id", "dtime", "ddate", "duration", "target", "address", "packets"]
+
+# ------------------------------------------------------------------------------
+# TIME - Peak window definition
+# ------------------------------------------------------------------------------
+# Critical fix from v2 audit: Must use timezone_offset_dst (DST) because period
+# Sep-Oct 2022 is under daylight saving time in US. Using standard offset shifts
+# peak window by 1 hour.
+# dtime in CSV is a datetime string, but its TZ is ambiguous. FCC stores it as
+# UTC. Local time = UTC + offset. Offset comes from unit-profile, NOT from CSV.
+time:
+  dtime_format: "%Y-%m-%d %H:%M:%S"  # Observed format in preview
+  dtime_is_utc: true  # Assumption to be validated: if dtime == local, offset handling differs
+  timezone_source: "unit-profile"  # Column lives in unit-profile Excel, not in CSVs
+  timezone_col: "timezone_offset_dst"  # In seconds (e.g., -14400 for EDT UTC-4) or hours (e.g., -4) - code auto-detects
+  timezone_fallback_col: "timezone_offset"  # If DST col missing, use standard offset
+  local_hour_derivation: "local_time = dtime_utc + offset; local_hour = hour(local_time)"
+  peak_window: [19, 23]  # [inclusive, exclusive) local time - evening peak per FCC MBA
+  peak_window_note: "19:00-22:59 local time, covers worst QoE period"
+
+# ------------------------------------------------------------------------------
+# METRICS - How QoE is calculated (per unit, peak window only)
+# ------------------------------------------------------------------------------
+# All RTT/jitter values in raw files are in microseconds (us), confirmed by:
+# - duration ~14,996,277 us = ~15s (jitter test length)
+# - jitter magnitude 0.2-55ms plausible for us->ms
+# - rtt_avg 66k-158k us = 66-158ms plausible for DSL/cable in preview (FTTH will be lower)
+metrics:
+  latency:
+    source_col: "rtt_avg"
+    unit_in_raw: "microseconds"
+    transform: "p95_us_to_ms"  # 95th percentile of hourly averages, then /1000
+    description: "P95 describes tail where bad QoE lives. Average hides it."
+    note: "Each rtt_avg is itself average of one hourly test, spikes visible only in rtt_max"
+  jitter:
+    source_cols: ["jitter_up", "jitter_down"]
+    unit_in_raw: "microseconds"
+    transform: "mean_up_down_then_p95_ms"  # avg up/down per test, then P95, then /1000
+    description: "Average of upstream and downstream jitter per test"
+    validation: "Preview shows jitter_up/down 218-55714 -> 0.2-55.7ms range, plausible"
+  loss:
+    source_cols: ["successes", "failures"]
+    source_file: "curr_udplatency"  # NOT curr_udpcloss
+    formula: "sum(failures) / sum(successes + failures) * 100"
+    method: "ratio_of_sums_weighted"  # Weighted by packets, not mean of per-test loss %
+    justification: "successes+failures varies 131-2365 per row (preview), so ratio-of-sums weights correctly"
+    misinterpretation_warning: "Do NOT use curr_udpcloss.packets - that is outage event count (2-3 packets per 4.5s outage)"
+
+# ------------------------------------------------------------------------------
+# THRESHOLDS - Provisional risk definition
+# ------------------------------------------------------------------------------
+# These are project-defined operating thresholds, NOT values attributed to a
+# standard until verified. They are finalized AFTER reviewing observed distributions.
+# Sensitivity analysis (latency x loss table) must be reported with every result.
+thresholds_provisional:
+  latency_ms: 30.0   # P95 latency >30ms -> risk (to be finalized from distribution)
+  jitter_ms: 10.0    # P95 jitter >10ms -> risk
+  loss_pct: 1.0      # Loss >1% -> risk
+  severe:
+    latency_ms: 100.0  # Extreme latency
+    loss_pct: 5.0      # Extreme loss
+  note: "Jitter condition rarely triggered in v2 with 5ms threshold - review after distribution"
+
+# ------------------------------------------------------------------------------
+# DATA QUALITY - No capping, no zero-filling (Lesson from v2.2 audit)
+# ------------------------------------------------------------------------------
+# v2.2 patched bad data with fillna(0) and clip 100%, hiding problems:
+# - fillna(0) made unit with no data look perfect (0ms latency)
+# - capping at 100% turned corrupt counters into 'total loss'
+# v3: Exclude invalid and count them in log, report units with insufficient data separately
+data_quality:
+  no_capping: true
+  no_fillna_zero: true
+  min_peak_samples: 20  # Units below this have insufficient data, reported separately, NOT scored
+  log_file: "data/processed/dq_log.json"
+  checks:
+    - "rtt_avg > 0"
+    - "successes + failures > 0"
+    - "jitter_avg >= 0"
+    - "dtime parseable"
+
+# ------------------------------------------------------------------------------
+# OUTPUT - Where processed data goes
+# ------------------------------------------------------------------------------
+# Power BI must consume ONLY processed data, never raw. This ensures single
+# implementation and enables unit-level reconciliation Python <-> Power BI
+output:
+  interim_dir: "data/interim/"  # Parquet intermediates, gitignored
+  processed_dir: "data/processed/"
+  final_file: "unit_qoe_v3.parquet"  # Final unit-level dataset
+  final_csv: "unit_qoe_v3.csv"       # CSV version for Power BI / sharing
+  dq_log: "dq_log.json"
+  reconciliation_file: "reconciliation_python_vs_powerbi.csv"

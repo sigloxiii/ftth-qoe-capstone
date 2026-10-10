@@ -109,3 +109,8 @@ Reference for the standards, measurement concepts, network metrics, business con
 - FCC. *Technical Appendix – Fixed Broadband, 2023* (test descriptions, loss definition, data dictionary): https://data.fcc.gov/download/measuring-broadband-america/2023/Technical-Appendix-fixed-2023.pdf
 - FCC. *2023 Fixed Measuring Broadband America Report*: https://data.fcc.gov/download/measuring-broadband-america/2023/2023-Fixed-Measuring-Broadband-America-Report.pdf
 - IB Lenhardt. *Mexico introduces new telecom law: IFT replaced by ATDT and CRT*: https://ib-lenhardt.com/news/mexico-introduces-new-telecom-law-ift-replaced-by-atdt-and-crt
+
+
+PENDIENTES DE AÑADIR
+
+epoch time
