@@ -1,0 +1,23 @@
+# 1) .gitignore
+@"
+.venv/
+__pycache__/
+.ipynb_checkpoints/
+data/raw/
+data/interim/
+config.local.yaml
+.env
+*.parquet
+"@ | Set-Content .gitignore -Encoding ascii
+
+# 2) Corregir archive: README antiguo -> data_lineage, REAMDE -> README
+git mv archive/README.md archive/methodology_v2/data_lineage_v2.1.md
+git mv archive/REAMDE.md archive/README.md
+git mv archive/methodology_v2/evidence/postmortem_convenience_biasv1.md archive/methodology_v1_FAILED/docs/postmortem_convenience_bias_v1.md
+
+# 3) Banner en los .md archivados (excepto archive/README.md)
+$banner = "> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**`n`n"
+Get-ChildItem archive -Recurse -Filter *.md | Where-Object { $_.FullName -ne (Resolve-Path archive/README.md).Path } | ForEach-Object {
+    $c = Get-Content $_.FullName -Raw -Encoding UTF8
+    if ($c -notmatch 'HISTORICAL - superseded') { Set-Content $_.FullName ($banner + $c) -Encoding UTF8 }
+}

@@ -1,56 +1,111 @@
-# Glossary of Terms - FTTH Quality of Experience (QoE) Risk Optimization
+# Glossary of Terms — FTTH QoE Risk Analysis
 
-## Standards & Regulatory Bodies
+Reference for the standards, measurement concepts, network metrics, business concepts and data-engineering terms used in this project. Terms marked **(project)** have a specific meaning in this repository.
 
-- **ITU-T (International Telecommunication Union - Telecommunication Standardization Sector):** The division of the ITU responsible for coordinating global telecommunication standards (e.g., GPON standards, QoE assessment frameworks like G.107 or P.800).
-- **FCC (Federal Communications Commission):** The U.S. federal agency regulating interstate and international communications by radio, television, wire, satellite, and cable.
-- **MBA (Measuring Broadband America):** An FCC initiative that collects and publishes objective performance data on fixed broadband services in the United States.
-- **IEEE (Institute of Electrical and Electronics Engineers):** A professional association that develops standards for networking and telecommunications technologies (e.g., Ethernet IEEE 802.3).
-- **ETSI (European Telecommunications Standards Institute):** An independent, non-profit organization that produces globally applicable standards for information and communications technologies.
-- **SamKnows:** Global broadband measurement platform providing hardware (Whitebox) and software agents to measure fixed broadband performance. Official technology partner for FCC MBA and regulators in US, UK, and EU for objective QoS/QoE data collection.
+## 1. Standards & Regulatory Bodies
 
-## Financial & Operational Concepts
+### International
+- **ITU-T (International Telecommunication Union – Telecommunication Standardization Sector):** the ITU division that coordinates global telecommunication standards (e.g., the GPON recommendation G.984).
+- **IEEE (Institute of Electrical and Electronics Engineers):** professional association that develops networking standards (e.g., Ethernet, IEEE 802.3).
+- **ETSI (European Telecommunications Standards Institute):** independent non-profit organization that produces standards for information and communications technologies.
 
-- **CAPEX (Capital Expenditure):** Upfront funds used by a telecommunications company to acquire, upgrade, and maintain physical assets such as fiber networks, OLTs, and splitters.
-- **OPEX (Operational Expenditure):** The ongoing daily costs required to run a network and business, including maintenance, field service dispatches (truck rolls), customer support, and power.
-- **ROI (Return on Investment):** A profitability ratio used to evaluate the efficiency and cost-effectiveness of an investment or deployment strategy.
-- **Churn Rate:** The percentage of service subscribers who cancel or fail to renew their subscriptions within a given period, often tied directly to poor QoE.
-- **ARPU (Average Revenue Per User):** A key financial metric measuring the average revenue generated per active subscriber.
+### United States
+- **FCC (Federal Communications Commission):** the U.S. federal agency that regulates interstate and international communications by radio, television, wire, satellite and cable.
+- **MBA (Measuring Broadband America):** FCC program that collects and publishes performance data on fixed broadband services in the United States. Source of the data in this project.
 
-## Network Architecture & Infrastructure (FTTH / PON)
+### Mexico
+- **CRT (Comisión Reguladora de Telecomunicaciones):** federal telecommunications regulator in Mexico. It replaced the IFT (Instituto Federal de Telecomunicaciones) under the new telecom framework, alongside the ATDT.
+- **ATDT (Agencia de Transformación Digital y Telecomunicaciones):** federal agency created in the same restructuring that replaced the IFT.
+- **PROFECO (Procuraduría Federal del Consumidor):** federal consumer protection agency; handles complaints about telecom services.
+- **NOM (Norma Oficial Mexicana):** mandatory technical standards in Mexico for safety, performance and equipment compliance.
+- **NYCE (Normalización y Certificación):** accredited organization that certifies equipment against Mexican standards.
 
-- **FTTH (Fiber to the Home):** A telecommunications architecture where optical fiber cables are installed directly from a central office to individual residences.
-- **PON (Passive Optical Network):** A telecommunications technology that implements a point-to-multipoint architecture, using unpowered optical splitters to enable a single optical fiber to serve multiple premises.
-- **GPON (Gigabit Passive Optical Network):** A PON standard defined by ITU-T G.984 supporting up to 2.488 Gbps downstream and 1.244 Gbps upstream.
-- **XGS-PON:** A 10-Gigabit symmetrical Passive Optical Network standard defined by ITU-T G.9807.1.
-- **OLT (Optical Line Terminal):** The master endpoint device located at the provider's central office, serving as the interface between the core network and the passive optical network.
-- **ONT / ONU (Optical Network Terminal / Optical Network Unit):** The customer-premises equipment (CPE) that converts optical signals from the fiber optic line into electrical signals for end-user devices.
-- **ODN (Optical Distribution Network):** The physical optical cable infrastructure consisting of fibers, splitters, splice closures, and connectors between the OLT and ONT.
+## 2. Measurement & Data Source
 
-## Quality of Service (QoS) & Quality of Experience (QoE)
+- **SamKnows:** company whose measurement platform (Whitebox devices and software) is used by the FCC MBA program; the MBA documentation refers to SamKnows Whitebox hardware generations.
+- **Whitebox:** the measurement device installed at a volunteer home and connected to the home network. Its model (e.g., `skwb8`, `ac1750v2`) is listed in the unit profile. **(project)** The Whitebox is the measurement *instrument*, so a model that cannot forward traffic at line rate distorts the results.
+- **Unit (`unit_id`):** one deployed Whitebox, which identifies one participating household.
+- **Panelist:** volunteer participant whose connection is measured (FCC terminology).
+- **Unit profile:** FCC file with the details of each unit (ISP, technology, state, tier, Whitebox model, time-zone offsets).
+- **Active measurement:** a test that generates its own traffic to measure the network (as opposed to passive monitoring of user traffic). All MBA tests used here are active.
+- **Target:** the server or host a test is run against (`target` column).
+- **On-net / Off-net node:** a test server inside the ISP's own network (on-net) or outside it (off-net). The MBA documentation states that one of each is tested hourly. **(project)** Whether to analyze them separately is a pending decision in the metrics specification.
+- **Peak hours:** evening period with the highest network demand. **(project)** Defined here as local time 19:00–22:59; FCC reports describe an evening peak period, to be confirmed in the Technical Appendix.
+- **UTC (Coordinated Universal Time):** the reference time standard. FCC `dtime` values are documented as UTC (with a documented exception for `curr_udpcloss`).
+- **DST (Daylight Saving Time):** seasonal clock shift of one hour. It changes the UTC offset used to convert `dtime` into local time (`timezone_offset` vs `timezone_offset_dst`).
+- **Provisioned speed / tier:** the download and upload speed contracted by the subscriber (`Download` / `Upload` columns, in Mbps).
+- **CPE (Customer Premises Equipment):** equipment installed at the customer site (modem, router, ONT).
+- **Line rate:** the maximum rate at which a device can forward traffic on an interface without loss.
+- **HW NAT (hardware network address translation):** NAT performed by dedicated hardware instead of the CPU, which allows a router to keep high throughput. Devices without it can saturate at lower speeds.
 
-- **QoE (Quality of Experience):** A measure of the overall acceptability of a service or application as perceived subjectively by the end-user.
-- **QoS (Quality of Service):** Objective, quantitative network performance metrics (e.g., bandwidth, latency, jitter, packet loss) managed by network operators.
-- **MOS (Mean Opinion Score):** A numerical rating ranging from 1 (bad) to 5 (excellent) used to quantify subjective QoE for video, voice, or gaming services.
-- **Latency (Latencia):** The absolute one-way delay for a packet to travel from source to destination, measured in milliseconds (ms). Critical KPI for gaming, VoIP, and video calls. Typical FTTH SLA: <20ms RTT to local gateway.
-- **RTT (Round-Trip Time / Tiempo de Ida y Vuelta):** Total time, measured in ms, for a packet to travel from source to destination and back. Base KPI measured by SamKnows and FCC MBA, fundamental for calculating latency, gaming lag, and VoIP delay.
-- **Jitter (Variación de Latencia / Fluctuación):** Statistical variation in delay between consecutive packets, measured in ms. High jitter (>15-30ms) directly degrades VoIP MOS and causes stuttering in gaming, even when average latency is low.
-- **Packet Loss Rate (PLR):** The percentage of transmitted data packets that fail to reach their destination.
-- **Throughput / Bandwidth:** The actual rate of successful data delivery over a communication channel, typically measured in Mbps or Gbps.
+## 3. Network Architecture & Infrastructure (FTTH / PON)
 
-## Risk Assessment & Optimization
+- **FTTH (Fiber to the Home):** architecture in which optical fiber runs from the central office directly to each residence.
+- **PON (Passive Optical Network):** point-to-multipoint architecture that uses unpowered optical splitters so one fiber serves several premises.
+- **GPON (Gigabit PON):** PON standard defined by ITU-T G.984, with up to 2.488 Gbps downstream and 1.244 Gbps upstream.
+- **XGS-PON:** 10-Gigabit symmetrical PON standard defined by ITU-T G.9807.1.
+- **OLT (Optical Line Terminal):** device at the provider's central office that connects the core network to the PON.
+- **ONT / ONU (Optical Network Terminal / Unit):** customer-side device that converts optical signals to electrical signals.
+- **ODN (Optical Distribution Network):** passive infrastructure (fibers, splitters, splice closures, connectors) between the OLT and the ONTs.
 
-- **Risk Score / Risk Index:** A calculated metric representing the probability and impact of network performance degradation or service outages affecting subscriber QoE.
-- **KPI (Key Performance Indicator):** Quantitative metrics used to evaluate critical operational or network performance factors (e.g., latency, availability).
-- **KQI (Key Quality Indicator):** High-level indicators that reflect user perception or experience directly linked to specific applications (e.g., video buffering time).
-- **SLO / SLA (Service Level Objective / Agreement):** Agreed-upon commitments regarding service availability, latency, and performance between a service provider and customer.
-- **Mean Time to Repair (MTTR):** The average time required to troubleshoot and repair a failed network element or restore degraded service.
-- **Pipeline (Pipeline de Datos de QoE / Deployment Pipeline):** 1) **Data Pipeline:** Automated ETL/ELT flow that ingests metrics from OLT, ONT, SamKnows Whiteboxes and probes to calculate Risk Score, KQI and MOS in near real-time. 2) **Deployment Pipeline:** Sequence of FTTH build stages from ODN planning, splitter installation, ONT activation to QoE validation.
-- **Pipeline Risk:** Accumulated risk along the deployment and operational pipeline that can degrade QoE, used to prioritize CAPEX/OPEX and reduce MTTR and Churn Rate.
+## 4. Network Performance Metrics (QoS)
 
-## Mexican Regulatory & Technical Entities
+- **QoS (Quality of Service):** objective, measurable network performance (bandwidth, delay, jitter, packet loss) managed by operators.
+- **Latency:** the delay for a packet to travel across the network. It can be one-way or round-trip; the FCC MBA tests measure round-trip delay.
+- **RTT (Round-Trip Time / tiempo de ida y vuelta):** time for a packet to travel from the source to the destination and back. In the data, `rtt_avg`, `rtt_min`, `rtt_max` and `rtt_std` are the average, minimum, maximum and standard deviation of the RTT in one test, in microseconds. **(project)** `p95_latency_ms` is built from `rtt_avg`.
+- **Queuing delay:** time a packet waits in device queues. It grows with congestion and explains most of the hour-to-hour variation of RTT on a healthy fiber link.
+- **Jitter:** variation of packet delay over time. It degrades real-time applications such as VoIP, video calls and gaming. The FCC documentation does not state the unit of `jitter_up` / `jitter_down`; the unit is verified in the data inspection.
+- **Packet loss:** share of transmitted packets that never arrive. **(project)** In FCC MBA, a packet is counted as lost if no response arrives within 3 seconds, and loss is computed as `failures / (successes + failures)` from `curr_udplatency`.
+- **Throughput:** rate of data actually delivered over a connection (Mbps or Gbps).
+- **Bandwidth:** maximum capacity of a link or tier. Throughput is what is achieved; bandwidth is what is available.
+- **Outage:** period in which connectivity is lost. In `curr_udpcloss.csv`, each row is an outage event with its `duration` and the number of packets lost (`packets`). **(project)**
+- **Availability / uptime:** share of time a service is usable. Possible future metric built from outage events. **(project)**
 
-- **CRT (Comisión Reguladora de Telecomunicaciones):** The federal regulatory agency in Mexico governing telecommunications and broadcasting (succeeding the IFT).
-- **PROFECO (Procuraduría Federal del Consumidor):** The federal consumer protection agency in Mexico responsible for safeguarding user rights and handling telecom service complaints.
-- **NOM (Norma Oficial Mexicana):** Mandatory official technical standards in Mexico governing safety, performance, and equipment compliance across telecom networks.
-- **NYCE (Normalización y Certificación):** An accredited organization in Mexico that certifies telecommunications hardware and network equipment against official standards.
+## 5. Quality of Experience & Service Management
+
+- **QoE (Quality of Experience):** overall acceptability of a service as perceived by the end user.
+- **MOS (Mean Opinion Score):** rating from 1 (bad) to 5 (excellent) used to quantify perceived quality of voice, video or gaming.
+- **KPI (Key Performance Indicator):** quantitative metric used to evaluate network or operational performance (e.g., latency, availability).
+- **KQI (Key Quality Indicator):** indicator that reflects user perception of a specific service (e.g., video buffering time).
+- **SLA / SLO (Service Level Agreement / Objective):** commitments on availability, latency and performance between a provider and a customer.
+- **MTTR (Mean Time to Repair):** average time to troubleshoot and restore a failed network element or degraded service.
+
+## 6. Risk Assessment (Project)
+
+- **`risk_flag` (project):** 1 if a unit exceeds at least one threshold (latency, jitter or loss) during peak hours; 0 otherwise. Thresholds are parameters in `config.yaml`.
+- **`risk_severe` (project):** second tier for extreme cases.
+- **Threshold:** limit above which a metric marks a unit as at risk. Project-defined operating values, not attributed to a standard until verified in the source.
+- **Sensitivity analysis:** reporting how results change when thresholds vary (e.g., latency × loss grid), instead of presenting a single arbitrary cut-off.
+- **Risk score / risk index:** generic term for a calculated measure of the probability and impact of degradation. Not used in this project, which reports binary flags.
+
+## 7. Financial & Operational Concepts
+
+- **CAPEX (Capital Expenditure):** upfront spending to acquire, upgrade and maintain physical assets such as fiber, OLTs and splitters.
+- **OPEX (Operational Expenditure):** recurring costs of running the network and business: maintenance, truck rolls, customer support, power.
+- **Truck roll:** a technician dispatch to the customer site. A key OPEX driver.
+- **ROI (Return on Investment):** profitability ratio used to evaluate an investment or strategy.
+- **Churn rate:** percentage of subscribers who cancel in a period; often linked to poor QoE.
+- **ARPU (Average Revenue Per User):** average revenue per active subscriber.
+
+## 8. Data Engineering & Methodology
+
+- **Data pipeline:** automated flow that ingests, cleans, transforms and loads data. **(project)** Here a batch pipeline: raw FCC CSV files → Parquet → unit-level metrics → Power BI.
+- **ETL / ELT:** extract-transform-load (or load-then-transform) patterns for moving and preparing data.
+- **Parquet:** columnar file format that is compact and fast for analytical queries.
+- **DuckDB:** embedded analytical SQL database that can query CSV and Parquet files directly without loading them into memory.
+- **Data lineage:** record of where data comes from and every transformation applied to it.
+- **Data dictionary:** documentation of the meaning, type and unit of each column.
+- **Data-quality log:** table that counts records discarded by each validation rule. **(project)**
+- **Outlier:** value far from the rest of the data; it can be a real event or a data error and must be investigated before being removed.
+- **Percentile (P50, P95):** value below which a given share of observations falls. P50 is the median; P95 describes the poorer end of the distribution.
+- **Ratio of sums (weighted aggregation):** computing a rate as `sum(numerator) / sum(denominator)` instead of averaging per-row percentages, so each row counts in proportion to its size. **(project)** Used for loss because the number of packets varies by hour.
+- **Reconciliation:** comparing two implementations of the same metric record by record to find where they differ. **(project)** Python vs Power BI, per `Unit ID`.
+- **Convenience bias:** error from analyzing the data that is easiest to reach (e.g., the first rows of a file) instead of a representative sample. **(project)** Cause of the v1 failure.
+- **Instrument bias:** error introduced by the measuring device itself. **(project)** Legacy Whiteboxes that cannot sustain line rate created false latency and loss in v2.
+- **Power Query (M) / DAX:** Power BI languages for data transformation (Power Query) and calculated measures (DAX).
+
+## Sources
+
+- FCC. *Technical Appendix – Fixed Broadband, 2023* (test descriptions, loss definition, data dictionary): https://data.fcc.gov/download/measuring-broadband-america/2023/Technical-Appendix-fixed-2023.pdf
+- FCC. *2023 Fixed Measuring Broadband America Report*: https://data.fcc.gov/download/measuring-broadband-america/2023/2023-Fixed-Measuring-Broadband-America-Report.pdf
+- IB Lenhardt. *Mexico introduces new telecom law: IFT replaced by ATDT and CRT*: https://ib-lenhardt.com/news/mexico-introduces-new-telecom-law-ift-replaced-by-atdt-and-crt
