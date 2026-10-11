@@ -1,67 +1,61 @@
 # src/ - Code for the FTTH QoE Capstone
 
-Code that implements the methodology defined in [`docs/metrics_spec.md`](../docs/metrics_spec.md) (v1.1.0). Values live in [`config.yaml`](../config.yaml); code never hardcodes a value that appears there. If code and spec disagree, the spec wins.
+Code that implements the methodology defined in [`docs/metrics_spec.md`](../docs/metrics_spec.md) (v1.1.0). Values live in [`config.yaml`](../config.yaml). If code and spec disagree, the spec wins.
 
 ## Layout
 
 ```
 src/
 ├── README.md        # this file
-├── steps/           # numbered exploration scripts, step_0.py ... step_N.py
+├── steps/           # numbered exploration scripts, step_0.py ... step_8.py
 └── pipeline.py      # single implementation of the metrics (planned)
 ```
 
 | Folder / file | Role | Status |
 | :--- | :--- | :--- |
 | `steps/` | Step-by-step inspection and decision scripts. Each one produced the evidence behind a decision (D-01 to D-05) or a Step 0 check | Versioned |
-| `pipeline.py` | One implementation of each transformation: raw FCC files -> unit-level metrics. Implements D-03 and D-04 | Planned |
+| `pipeline.py` | One implementation of each transformation: raw FCC files -> unit-level metrics. Implements D-03 and D-04, reads `config.yaml` | Planned |
 
 ## `steps/` - Script map
 
-Each script is a numbered step with its objective written in the header comment. Every figure in `docs/` traces back to one of them.
+Each script states its objective in the header comment. The recorded console output of a script is in the `OUTPUT` docstring at the end of the file.
 
-| Script | Objective | Feeds |
+| Script | What it does | Feeds |
 | :--- | :--- | :--- |
-| `step_0.py` | Real structure, coverage, targets, hourly RTT, offsets | Dictionary checks 1, 4, 7, 8 |
-| `step_1.py` | Extract the 258 FTTH units to interim CSVs; effect of `N_MIN` | D-02 |
-| `step_2.py` | Period coverage, rows per unit, hourly RTT profile | D-01 |
-| `step_3.py` | Impact of the time convention on the risk flag (all servers) | D-03 |
-| `step_4.py` | Duplicates by key | D-05 |
-| `step_5.py` | Server mixing: all servers vs primary server | D-04 |
-| `step_6.py` | Time convention repeated under `primary_only` | D-03 |
-| `step_7.py` | Eastern vs Pacific RTT profile, all technologies pooled, shifts 0..+6 h | D-03 |
+| `step_0.py` | Coverage of the three raw files for the 258 FTTH units (rows, units, date range, rows per month), distinct targets, mean `rtt_avg` by hour under UTC, standard offset and DST offset | Dictionary checks 1, 4, 7, 8 |
+| `step_1.py` | Filters the raw files to the 258 units and caches them in `data/interim/`; tests per hour (UTC vs offset); servers per unit; median RTT by state; peak-window records per unit (full period vs September only) | D-01, D-02 |
+| `step_2.py` | Server mixing (RTT spread between servers of a unit, share of the primary server); count of invalid and duplicate records; global loss | D-04 (motivation), spec section 5.2 |
+| `step_3.py` | Time-convention sensitivity with all servers pooled: A) `dtime + timezone_offset_dst`, B) `dtime` as local, C) all hours | D-03 |
+| `step_4.py` | Duplicates by (`unit_id`, `dtime`, `target`): exact copies vs conflicting values | D-05 |
+| `step_5.py` | All servers vs primary server, under the `dtime + timezone_offset_dst` reading; effect on `risk_flag` | D-04 |
+| `step_6.py` | Same three variants as `step_3.py`, with the primary-server rule | D-03 |
+| `step_7.py` | Eastern vs Pacific hourly RTT profile, all technologies pooled, shifts 0..+6 h | D-03 |
 | `step_8.py` | Same test by technology, shifts -6..+6 h | D-03 |
-| `step_9.py` | Local time + all servers (missing cell of the sensitivity matrix) | Pending |
 
-The same map is in [`docs/procedure_summary_v3.md`](../docs/procedure_summary_v3.md). Decisions and their evidence: [`docs/decisions.md`](../docs/decisions.md).
+Decisions and their evidence: [`docs/decisions.md`](../docs/decisions.md). Overview of the procedure: [`docs/procedure_summary_v3.md`](../docs/procedure_summary_v3.md).
 
-### Conventions
+### Reading the steps correctly
 
-- Scripts are numbered in the order the analysis was done (`step_0.py`, `step_1.py`, ...). A number is never reused.
-- Every script starts with a comment that states its objective.
-- Scripts are exploration and evidence, not the final pipeline. A rule found in a step is moved to the spec and `config.yaml` first, then implemented in `pipeline.py`.
-- Figures quoted in the docs (for example 10 / 6 / 17 units flagged) are indicative until `pipeline.py` reproduces them over the same units (spec section 7).
+- **Steps 1 to 6 were written before D-03.** In them, "spec", `h_spec`, `h_local` and `h_dst` mean `dtime + timezone_offset_dst` (the UTC reading, now a sensitivity). The base case of D-03 is the variant `h_alt` / "dtime como local" (`hour(dtime)`).
+- The scripts apply the three-metric rule (latency 20 ms, jitter 5 ms, loss 1%) but do **not** apply `N_MIN`, so the flagged counts they print include units that the pipeline will not score.
+- The primary server is computed separately for the latency file and for the jitter file.
+- `step_5.py` breaks ties between servers by input order; `step_6.py` breaks them alphabetically, as the spec states.
+- Thresholds (`T_LAT`, `T_JIT`, `T_LOSS`) are hardcoded in the steps. The pipeline reads them from `config.yaml`.
 
-## Inputs and configuration
+### Running the steps
 
-- Raw FCC files (6.8 GB) are not in the repository. Set their folder in `config.local.yaml` (gitignored):
-
-  ```yaml
-  inputs:
-    raw_dir: "D:/Capstone FTTH/data/raw/validated-data-sept2022"
-  ```
-
-  `config.yaml` keeps `raw_dir: null` on purpose, so no absolute path is committed.
-- Population files are in `data/` (`fiber_units.csv`, `excluded_legacy_ftth_units.csv`, `excluded_legacy_units.csv`, `unit-profile-sept2022.xlsx`).
-- Intermediate files go to `data/interim/` (gitignored). Final outputs go to `data/processed/`.
+- Scripts use pandas only and read absolute Windows paths: `BASE` / `RAW` / `INTERIM` point to `D:\Capstone FTTH\...`. Edit them to run on another machine.
+- `step_1.py` creates `data/interim/udplatency_ftth.csv`, `udpjitter_ftth.csv` and `udpcloss_ftth.csv` (gitignored); steps 2 to 6 read them. Steps 0, 7 and 8 read the raw files directly.
+- `step_7.py` and `step_8.py` read `data/unit-profile-sept2022.csv`; the repository versions the `.xlsx` of the same profile.
+- Raw FCC files (6.8 GB) are not in the repository.
 
 ## Planned: `pipeline.py`
 
-- Reads `config.yaml` (and the `config.local.yaml` override) and runs the order of operations in spec section 5.
+- Reads `config.yaml` and the `config.local.yaml` override (gitignored, sets `inputs.raw_dir`) and runs the order of operations in spec section 5, including `N_MIN`.
 - Writes `data/processed/ftth_qoe_unit_metrics.csv`, `units_insufficient_data.csv` and `data_quality_log.csv`.
 - Power BI consumes only `data/processed/`; it does not recalculate metrics.
 
-## Rules that apply to all code here
+## Rules for the pipeline
 
 - No capping and no `fillna(0)`: invalid records are excluded and counted.
 - `dtime` is read as local time; no offset is added (D-03). The UTC reading is a sensitivity.
