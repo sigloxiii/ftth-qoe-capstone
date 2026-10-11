@@ -37,6 +37,7 @@
 # VERIFIED FACTS ABOUT THE DATA (Step 0, 258 FTTH units; see docs/data_dictionary.md)
 # ----------------------------------------------------------------------------
 #  - dtime is a string "%Y-%m-%d %H:%M:%S" with no time zone marker (not unix epoch)
+#  - dtime behaves as each unit's LOCAL time, not UTC (step_7/step_8; decision D-03)
 #  - timezone_offset_dst is in HOURS (values -4, -5, -7); all 258 units observe DST
 #  - FTTH records span 2022-09-12 to 2022-10-31 (50 days), not only September
 #  - Median RTT per unit is 2.5-17.2 ms; global loss is about 0.022%
@@ -69,8 +70,8 @@ analysis_period:
 population:
   source_file: "data/unit-profile-sept2022.xlsx"   # FCC unit profile
   fiber_units_file: "data/fiber_units.csv"          # Derived: the 258 filtered units
-  excluded_units_file: "data/excluded_legacy_FTTH_units.csv"   # 27 FTTH units excluded for legacy hardware (audit)
-  all_excluded_units_file: "data/excluded_legacy_units.csv"    # All units out of scope: non-fiber plus unused fiber (audit only; not read by the pipeline)
+  excluded_units_file: "data/excluded_legacy_FTTH_units.csv"   # 27 legacy FTTH units (hardware not credible), kept for audit
+  all_excluded_units_file: "data/excluded_legacy_units.csv"    # All Whiteboxes outside the analysis: non-fiber, or fiber not used
   allowed_whitebox_models: ["skwb8", "skwb8p", "ac1750v2"]
   excluded_models: ["wnr3500l-high", "wdr3600", "wr1043nd", "wr741nd", "wr741ndv4"]
   expected_counts:          # Verified against the unit profile; used by tests/
@@ -106,20 +107,27 @@ columns:
 # ------------------------------------------------------------------------------
 # TIME - Peak window
 # ------------------------------------------------------------------------------
-# local_time = dtime (UTC) + timezone_offset_dst (hours)
-# The whole period is under US daylight saving time (it ended on 2022-11-06), so
-# timezone_offset_dst applies to every record. There is NO fallback to
-# timezone_offset: a unit without a valid DST offset is excluded and logged.
+# DECISION D-03 (2026-10-10): dtime is treated as the unit's LOCAL time.
+# local_hour = hour(dtime). No offset is added.
+# Evidence: the FCC dictionary says UTC, but the hourly RTT profile of Pacific
+# units (UTC-7) does not trail the Eastern one (UTC-4) by the 3 h that UTC would
+# imply. Correlation at a +3 h shift is about 0 or negative; the best alignment is
+# -1 to -2 h, much closer to 0 (local) than to +3 (UTC). See docs/decisions.md.
+# The offsets in the unit profile stay verified and documented but are NOT used.
 time:
   dtime_format: "%Y-%m-%d %H:%M:%S"
-  dtime_is_utc: true   # FCC documentation. Not verifiable with FTTH latency data: a sensitivity check (dtime read as local) is reported
-  timezone_source: "unit-profile"
-  timezone_col: "timezone_offset_dst"
-  timezone_unit: "hours"
+  dtime_is_utc: false
+  dtime_interpretation: "local"
+  timezone_source: "unit-profile"   # Reference only (offset consistency checks); not used to compute the window
   peak_start_hour: 19            # local hour, inclusive
   peak_end_hour_exclusive: 23    # local hour, exclusive -> window 19:00:00 to 22:59:59
   # Project definition of the evening peak. Citation of the 7-11 pm convention in
   # FCC MBA reports: to be added once verified in the source.
+  sensitivity_utc_reading:       # Reported with every result
+    enabled: true
+    rule: "local_hour = hour(dtime + timezone_offset_dst); expected 6 flagged units with primary_only (vs 10 in the base case)"
+    timezone_col: "timezone_offset_dst"
+    timezone_unit: "hours"
 
 # ------------------------------------------------------------------------------
 # SERVER RULE - One test server per unit
@@ -129,7 +137,7 @@ time:
 # not the line. Mixing servers inflated risk: 17 units flagged with all servers
 # versus 6 with the primary server only (step_5.py).
 server_rule:
-  mode: "primary_only"   # PENDING CONFIRMATION
+  mode: "primary_only"   # DECISION D-04 (2026-10-10): confirmed base case
   primary_definition: "target with the most peak-window records for the unit"
   tie_break: "alphabetical order of target"
   report_sensitivity_all_servers: true   # Variant A is reported as a sensitivity analysis
@@ -198,7 +206,7 @@ data_quality:
     - "dtime not parseable"
   duplicates:
     key: ["unit_id", "dtime", "target"]
-    policy: "pending_step_4"   # Step 0 found 9 key duplicates in udplatency (0.005%); policy decided after step_4.py
+    policy: "keep_one_if_identical_else_drop_all"   # Decided after step_4.py: latency 16 rows in 7 groups, all exact; jitter 10 rows, 8 exact and 2 conflicting (unit 943232)
   log_file: "data/processed/data_quality_log.csv"
 
 # ------------------------------------------------------------------------------
