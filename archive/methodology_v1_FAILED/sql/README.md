@@ -1,4 +1,7 @@
-# SQL - Aggregation & Filtering
+> **HISTORICAL - superseded  Do not use as input.**
+> 
+> 
+> # SQL - Aggregation & Filtering
 
 - `01_fiber_filter.sql` - Filter technology = FIBER
 - `02_peak_degradation.sql` - Aggregate P95 latency >80ms and packet_loss >1.5% during peak 19-23h

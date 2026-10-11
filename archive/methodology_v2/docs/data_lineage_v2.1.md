@@ -18,11 +18,11 @@ This document describes the full data lineage, from raw source to analysis-ready
 - **Location (local, git-ignored):** `data/validated-data-sept2022/`
 
 #### Evidence 1: TAR content (6.8GB total)
-![TAR content - 6.8GB decompressed](../docs/evidence/contenido_tar_6.8GB.png)
+![TAR content - 6.8GB decompressed](../evidence/contenido_tar_6.8GB.png)
 *File `validated-data-sept2022.tar.gz` shows total decompressed size 6,812,728,506 bytes. Largest files: curr_dns.csv 5,169,818,037 bytes (5GB), curr_webget.csv 856,272,747 bytes, curr_ping.csv 223,174,915 bytes.*
 
 #### Evidence 2: Extracted file list (Explorer)
-![Explorer view - validated-data-sept2022](../docs/evidence/validated-data-sept2022_filelist.png)
+![Explorer view - validated-data-sept2022](../evidence/validated-data-sept2022_filelist.png)
 *Extracted folder contains 16 CSVs. Note *_t6.csv files are 1KB (empty IPv6 tests in this dump).*
 
 #### Full Inventory - What the TAR Contains:

@@ -107,7 +107,7 @@ columns:
 # ------------------------------------------------------------------------------
 # TIME - Peak window
 # ------------------------------------------------------------------------------
-# DECISION D-03 (2026-10-10): dtime is treated as the unit's LOCAL time.
+# DECISION D-03 (2026-10-11): dtime is treated as the unit's LOCAL time.
 # local_hour = hour(dtime). No offset is added.
 # Evidence: the FCC dictionary says UTC, but the hourly RTT profile of Pacific
 # units (UTC-7) does not trail the Eastern one (UTC-4) by the 3 h that UTC would
@@ -137,7 +137,7 @@ time:
 # not the line. Mixing servers inflated risk: 17 units flagged with all servers
 # versus 6 with the primary server only (step_5.py).
 server_rule:
-  mode: "primary_only"   # DECISION D-04 (2026-10-10): confirmed base case
+  mode: "primary_only"   # DECISION D-04 (2026-10-11): confirmed base case
   primary_definition: "target with the most peak-window records for the unit"
   tie_break: "alphabetical order of target"
   report_sensitivity_all_servers: true   # Variant A is reported as a sensitivity analysis
