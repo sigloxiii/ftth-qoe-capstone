@@ -55,74 +55,117 @@ The project went through two methodology iterations. Each one found a real probl
 - **Unit-level reconciliation** between Python and Power BI (per `Unit ID`, with explicit tolerances), instead of comparing totals.
 - **Parameterized thresholds** with a sensitivity analysis. They are project-defined operating thresholds, not values attributed to a standard until verified in the source.
 
-## 3. Methodology v3 (Summary)
+## 3. Methodology v3 (Summary) - Aligned to config.yaml v3.0
 
-Full definitions are in [`docs/metrics_spec.md`](docs/metrics_spec.md).
+Full definitions are in [`docs/metrics_spec.md`](docs/metrics_spec.md) v1.1.0 and [`config.yaml`](config.yaml) is the single source of truth. Decisions in [`docs/decisions.md`](docs/decisions.md).
+
+**Analysis period**
+- Full observed period inclusive: `2022-09-12` to `2022-10-31` (50 days). Rationale: September alone gives ~32 peak records per unit (P95 rests on ~1.6 obs); full period gives ~120 (~6 obs for P95). See `config.yaml` `analysis_period`.
 
 **Population**
-- FTTH units in the FCC unit profile (285), filtered to gigabit-capable Whitebox models (`skwb8`, `skwb8p`, `ac1750v2`) → **258 units**. The 27 excluded legacy units (`wnr3500l-high` 17, `wdr3600` 6, `wr1043nd` 2, `wr741nd` 1, `wr741ndv4` 1) can be reproduced from `data/unit-profile-sept2022.xlsx`.
+- FTTH units in the FCC unit profile (285), filtered to gigabit-capable Whitebox models (`skwb8`, `skwb8p`, `ac1750v2`) → **258 units**. The 27 excluded legacy units (`wnr3500l-high` 17, `wdr3600` 6, `wr1043nd` 2, `wr741nd` 1, `wr741ndv4` 1) are in `data/excluded_legacy_FTTH_units.csv` and reproduced from `data/unit-profile-sept2022.xlsx`. `data/excluded_legacy_units.csv` contains all out-of-scope units (audit).
 - The 258 units belong to three ISPs (Cincinnati Bell 120, Verizon 76, Frontier 62) in 16 US states.
-- Rationale: the Whitebox is the measurement instrument. A device that cannot forward traffic at line rate creates the degradation it reports.
+- Allowed TZ offsets: `[-4, -5, -7]` hours (`timezone_offset_dst`). Any other value stops pipeline. See `config.yaml` `population`.
+- Rationale: the Whitebox is the measurement instrument. A device that cannot forward traffic at line rate creates the degradation it reports. Filter uses nominal capability, not per-unit throughput test (see Limitations).
 
-**Peak window**
-- `dtime` is UTC. Local time = `dtime + timezone_offset_dst`. Peak window: local hour ≥ 19 and < 23.
+**Peak window - DECISION D-03**
+- **D-03 (2026-10-10): `dtime` is treated as LOCAL time, not UTC.** Implementation in `src/pipeline_v3.py`: `local_hour = hour(dtime)`. No offset added. `dtime_format: "%Y-%m-%d %H:%M:%S"` string with no TZ marker (verified Step 0, not unix epoch).
+- Evidence (Step 7/8): FCC dictionary says UTC, but hourly RTT profile of Pacific units (UTC-7) does not trail Eastern (UTC-4) by 3h as UTC would imply. Correlation at +3h shift ~0 or negative; best alignment -1 to -2h, much closer to 0 (local) than to +3 (UTC).
+  - Cable: k=0 corr 0.762 vs k=+3 -0.107, best k=-1 0.892, peak Eastern 21h / Pacific 20h (dtime hour)
+  - DSL: k=0 0.594 vs k=+3 -0.018, best k=-2 0.799, peak 21h/19h
+  - Conclusion: indirect proof, does not prove FCC docs wrong, only that latency data does not behave as FCC says. See `docs/decisions.md`.
+- `timezone_offset_dst` in HOURS (-4,-5,-7), all 258 observe DST, verified but NOT used to compute window. Kept as sensitivity analysis per `config.yaml` `time.sensitivity_utc_reading`: `local_hour = hour(dtime + timezone_offset_dst)` expected 6 flagged with primary_only vs 10 base.
+- Peak window: local hour >=19 and <23 (19:00:00 to 22:59:59 local) per `time.peak_start_hour: 19`, `peak_end_hour_exclusive: 23`
 
-**Metrics (per unit, peak window only)**
-- `p95_latency_ms`: 95th percentile of `rtt_avg` (µs → ms).
-- `p95_jitter_ms`: 95th percentile of the average of up/down jitter (µs → ms; unit to be confirmed).
-- `loss_pct`: `sum(failures) / sum(successes + failures) × 100` (ratio of sums, weighted by packets), from `curr_udplatency`.
+**Server rule - DECISION D-04**
+- **D-04 (2026-10-10): `primary_only` as base case** (vs `all_servers` variant). Rationale: a unit uses 1 to 4 servers at different distances. Access line is same, RTT differences reflect distance/route, not line. Mixing servers inflated risk: 17 flagged with all servers vs 6 with primary_only (step_5.py). Base now ~10 with D-03 local.
+- Primary definition: target with most peak-window records for the unit, tie alphabetical order of target. See `config.yaml` `server_rule` and `src/pipeline_v3.py` `select_primary_server()`.
+- Sensitivity Variant A `all_servers` reported with every result.
 
-**Risk definition (provisional)**
-- `risk_flag = 1` if any metric exceeds its threshold. Thresholds live in `config.yaml` and are finalized after reviewing the observed distributions; a sensitivity table (latency × loss) is reported with every result.
-- A second tier (`risk_severe`) separates extreme cases.
+**Metrics (per unit, peak window only, after server rule, after D-03/D-04)**
+- `p95_latency_ms`: 95th percentile of `rtt_avg` (µs → ms via /1000). `percentile: 0.95`, `percentile_method: linear` (pandas quantile default, same as PERCENTILE.INC). Description: P95 describes tail where bad QoE lives.
+- `p95_jitter_ms`: 95th percentile of average of up/down jitter `(jitter_up + jitter_down)/2` (µs → ms; unit to be confirmed, duration ~15s, values 0.2-55ms). Same percentile/method.
+- `loss_pct`: `sum(failures) / sum(successes + failures) * 100` ratio_of_sums weighted by packets (successes+failures varies 131-2365), from `curr_udplatency` (NOT `curr_udpcloss`). See `config.yaml` `metrics.loss`.
+
+**Data quality v3.0**
+- No capping, no fillna(0): `data_quality.no_capping: true`, `no_fillna_zero: true`. v2.2 hid problems.
+- Invalid records excluded and counted: `successes+failures<=0`, loss outside [0,100], rtt_avg null/negative, jitter null/negative, dtime not parseable. Step 0 found 0 for each.
+- Duplicates key `[unit_id, dtime, target]` policy `keep_one_if_identical_else_drop_all`: latency 16 rows in 7 groups all exact, jitter 10 rows 8 exact 2 conflicting (unit 943232).
+- `n_min_peak_records: 50` - Top 5% of 50 = 2.5 obs, excludes 8 units in step_1 (before server rule). Units below reported in `units_insufficient_data.csv` and NOT scored.
+- Outputs: `data/processed/ftth_qoe_unit_metrics.csv`, `units_insufficient_data.csv`, `data_quality_log.csv` (CSV only, no Parquet, version in git tags)
+
+**Risk definition**
+- `risk_flag = 1 if p95_latency_ms > latency_p95_ms OR p95_jitter_ms > jitter_p95_ms OR loss_pct > loss_pct` (strictly greater). Thresholds live in `config.yaml` `thresholds.base: 20/5/1.0`, `severe: 50/15/10` and are project-defined operating thresholds (NOT values attributed to standard).
+- `risk_severe` second tier separates extreme cases.
+- Sensitivity grid reported with every result per `thresholds.sensitivity`: `latency_p95_ms [20,30,50]` x `loss_pct [0.5,1,2,5]` -> % units at risk. Global loss ~0.022% so review loss grid after distribution.
+- Expected base case D-03 local + D-04 primary_only: ~10 units at risk (was 6 with UTC reading, 17 with all_servers).
 
 ## 4. Repository Structure
 
 ```
 ftth-qoe-capstone/
-├── assets/                  # banner
+├── assets/                  # banner main_banner.jpg
 ├── data/
 │   ├── fiber_units.csv      # 258 FTTH units (gigabit-capable Whitebox models)
+│   ├── excluded_legacy_FTTH_units.csv  # 27 legacy FTTH excluded (hardware not credible) - used by pipeline
+│   ├── excluded_legacy_units.csv       # All out-of-scope (audit, includes 27)
 │   ├── unit-profile-sept2022.xlsx   # FCC unit profile (source)
-│   ├── CSV_previews.md      # first rows of the raw files used
-│   ├── interim/             # (planned) Parquet intermediates, gitignored
-│   └── processed/           # (planned) final unit-level dataset
+│   ├── CSV_previews.md      # first 10 rows of raw files (verified structure)
+│   ├── interim/             # Parquet intermediates, gitignored (planned)
+│   └── processed/           # final unit-level dataset: ftth_qoe_unit_metrics.csv, units_insufficient_data.csv, data_quality_log.csv
 ├── docs/
-│   ├── metrics_spec.md      # source of truth for all metrics
-│   ├── data_dictionary.md   # meaning of every input column, with sources
+│   ├── metrics_spec.md      # source of truth v1.1.0 for all metrics
+│   ├── data_dictionary.md   # meaning of every input column, with Step 0 verification (real vs FCC dictionary)
+│   ├── decisions.md         # D-03 local vs UTC, D-04 primary_only with evidence
 │   ├── glossary_of_terms.md
-│   └── lessons_learned.md   # (planned)
-├── src/                     # (planned) pipeline, single implementation
-├── tests/                   # (planned) data-quality and consistency tests
-├── powerbi/                 # (planned) dashboard, consumes processed data only
-├── config.yaml              # (planned) thresholds and parameters
-├── archive/                 # superseded material (v1, v2), not used by the pipeline
+│   ├── reconciliation.md    # Python ↔ Power BI unit-level reconciliation
+│   └── lessons_learned.md
+├── src/
+│   ├── pipeline_v3.py       # single implementation, implements D-03/D-04, config.yaml as source of truth
+│   └── utils.py             # load_config() with config.local.yaml override
+├── tests/
+│   ├── test_qoe.py          # population 258+27, no overlap, timezone allowed, loss range, n_min, reconciliation
+│   └── test_population.py   # expected counts
+├── powerbi/                 # dashboard, consumes processed data only, expected_schema.csv for reconciliation
+├── config.yaml              # v3.0 single source of truth (222 lines, methodology 3.0, spec 1.1.0, raw_dir: null)
+├── config.local.yaml.example # template: inputs.raw_dir local path, gitignored
+├── requirements.txt         # pandas, pyyaml, openpyxl
 └── LICENSE
 ```
 
-Raw FCC data (6.8 GB) is not stored in the repository. Its local path is set in `config.local.yaml` (gitignored).
+Raw FCC data (6.8 GB) is NOT stored in the repository. Its local path is set in `config.local.yaml` (gitignored). Example `config.local.yaml`:
+
+```yaml
+inputs:
+  raw_dir: "D:/Capstone FTTH/data/raw/validated-data-sept2022"
+```
+
+`config.yaml` has `raw_dir: null` by design - local override pattern prevents absolute paths in repo.
 
 ## 5. Reproducibility
 
-Raw data: FCC MBA validated data, 2022 release (13th Measuring Broadband America report), including `curr_udplatency.csv`, `curr_udpjitter.csv` and `curr_udpcloss.csv`.
+Raw data: FCC MBA validated data, 2022 release (13th Measuring Broadband America report), including `curr_udplatency.csv`, `curr_udpjitter.csv` and `curr_udpcloss.csv`. `curr_udpcloss` is reference only: outage events (`duration ~4.5s, packets 2-3`) NOT a loss metric.
 
-1. Download and extract the files listed above.
-2. Set `raw_dir` in `config.local.yaml`.
-3. Run the pipeline (command will be documented here once the pipeline is complete).
-4. Validate with the tests in `tests/`.
+1. Download and extract the files listed above to a local folder.
+2. Copy `config.local.yaml.example` to `config.local.yaml` and set `raw_dir`.
+3. Install dependencies: `pip install -r requirements.txt` (pandas, pyyaml, openpyxl)
+4. Run pipeline: `python src/pipeline_v3.py` (inspection mode if raw_dir missing, prints config v3.0 D-03/D-04)
+5. Validate with tests: `pytest tests/` - checks population 258/27, timezone allowed [-4,-5,-7], loss range, no fillna(0), duplicates policy
+6. Reconcile Power BI: Power BI consumes ONLY `data/processed/` and compares per unit_id with tolerances 0.05ms latency, 0.01% loss per `docs/reconciliation.md`
 
 ## 6. Roadmap
 
-- [x] Hardware filter and population definition (258 units)
-- [x] Metrics specification
-- [x] Data dictionary from the FCC Technical Appendix
-- [x] Preview of the first rows of the raw files
-- [x] Repository restructure and archive of previous versions
-- [ ] Data inspection of raw files (headers, units, time zone, `target` values, date range)
-- [ ] Pipeline: raw → Parquet → unit-level metrics
-- [ ] Data-quality log and automated tests
-- [ ] Threshold selection from observed distributions, with sensitivity analysis
-- [ ] Power BI dashboard and unit-level Python ↔ Power BI reconciliation
+- [x] Hardware filter and population definition (258 units) - `data/fiber_units.csv`
+- [x] Metrics specification v1.1.0 - `docs/metrics_spec.md`
+- [x] Data dictionary with real vs FCC dictionary - `docs/data_dictionary.md`
+- [x] Preview of the first rows of the raw files - `data/CSV_previews.md`
+- [x] Repository restructure and archive of previous versions - `archive/`
+- [x] Decisions D-03 local vs UTC and D-04 primary_only - `docs/decisions.md`, `config.yaml` v3.0
+- [ ] Data inspection of raw files (headers, units, time zone, `target` values, date range) - Step 0 verified facts in config.yaml
+- [ ] Pipeline: raw → unit-level metrics (CSV) with DQ log - `src/pipeline_v3.py` in inspection mode, full run needs raw_dir
+- [ ] Data-quality log and automated tests - `tests/test_qoe.py`
+- [ ] Threshold selection from observed distributions, with sensitivity analysis - `thresholds.sensitivity` grid
+- [ ] Power BI dashboard and unit-level Python ↔ Power BI reconciliation - `powerbi/`
 - [ ] Results and findings section
 
 ## 7. Limitations

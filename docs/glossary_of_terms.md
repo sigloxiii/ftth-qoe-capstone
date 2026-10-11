@@ -114,3 +114,6 @@ Reference for the standards, measurement concepts, network metrics, business con
 PENDIENTES DE AÑADIR
 
 epoch time
+RTT
+DIM table
+
