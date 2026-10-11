@@ -70,7 +70,7 @@ analysis_period:
 population:
   source_file: "data/unit-profile-sept2022.xlsx"   # FCC unit profile
   fiber_units_file: "data/fiber_units.csv"          # Derived: the 258 filtered units
-  excluded_units_file: "data/excluded_legacy_FTTH_units.csv"   # 27 legacy FTTH units (hardware not credible), kept for audit
+  excluded_units_file: "data/excluded_legacy_ftth_units.csv"   # 27 legacy FTTH units (hardware not credible), kept for audit
   all_excluded_units_file: "data/excluded_legacy_units.csv"    # All Whiteboxes outside the analysis: non-fiber, or fiber not used
   allowed_whitebox_models: ["skwb8", "skwb8p", "ac1750v2"]
   excluded_models: ["wnr3500l-high", "wdr3600", "wr1043nd", "wr741nd", "wr741ndv4"]

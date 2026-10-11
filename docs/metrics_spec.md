@@ -12,7 +12,7 @@
 
 - **Population source:** `unit-profile-sept2022.xlsx` (FCC MBA, 13th Report, September 2022 data).
 - **Filter 1:** `Technology = Fiber` → 285 units.
-- **Filter 2 (hardware):** `Whitebox Model IN (skwb8, skwb8p, ac1750v2)` → **258 units**. The 27 excluded units (`wnr3500l-high` 17, `wdr3600` 6, `wr1043nd` 2, `wr741nd` 1, `wr741ndv4` 1) are kept in `data/excluded_legacy_FTTH_units.csv` for audit. `data/excluded_legacy_units.csv` lists every Whitebox outside the analysis (non-fiber, or fiber not used) and includes those 27.
+- **Filter 2 (hardware):** `Whitebox Model IN (skwb8, skwb8p, ac1750v2)` → **258 units**. The 27 excluded units (`wnr3500l-high` 17, `wdr3600` 6, `wr1043nd` 2, `wr741nd` 1, `wr741ndv4` 1) are kept in `data/excluded_legacy_ftth_units.csv` for audit. `data/excluded_legacy_units.csv` lists every Whitebox outside the analysis (non-fiber, or fiber not used) and includes those 27.
 - **Rationale:** the Whitebox is the measurement instrument. Models with insufficient CPU or port speed (FastEthernet, no hardware NAT) create artificial latency and loss (instrument bias).
 - **ISPs in scope:** Cincinnati Bell 120, Verizon 76, Frontier 62.
 - **Grain:** 1 row = 1 `Unit ID`.
@@ -151,7 +151,7 @@ Automated tests (`tests/`):
 - `0 <= loss_pct <= 100`; `p95_latency_ms > 0`.
 - `risk_flag == (flag_latency | flag_jitter | flag_loss)`.
 - `analyzed + insufficient == 258`.
-- The 27 units in `excluded_legacy_FTTH_units.csv` are contained in `excluded_legacy_units.csv`, and none of them is in `fiber_units.csv`.
+- The 27 units in `excluded_legacy_ftth_units.csv` are contained in `excluded_legacy_units.csv`, and none of them is in `fiber_units.csv`.
 
 ## 10. Business Impact
 

@@ -16,7 +16,7 @@ Identify FTTH units at risk of poor QoE during local evening peak hours (19:00-2
 
 **v2 - Instrument bias:**
 - Legacy Whiteboxes `wnr3500l-high, wdr3600, wr1043nd, wr741nd, wr741ndv4` cannot forward at gigabit line rate. They create the degradation they report.
-- FTTH population: 285 raw -> 258 after filter. The 27 excluded units are in `excluded_legacy_FTTH_units.csv`.
+- FTTH population: 285 raw -> 258 after filter. The 27 excluded units are in `excluded_legacy_ftth_units.csv`.
 
 **v2.1.3 -> v2.2 - Loss misinterpreted (Finding #1):**
 - `curr_udpcloss.packets` was treated as loss %, then patched as `packets/10`.
@@ -195,7 +195,7 @@ Any other value must be justified first in the spec and changed in `config.yaml`
 ### Population files
 
 - `fiber_units.csv`: 258 FTTH units in scope (Technology = Fiber and Whitebox model `skwb8`, `skwb8p` or `ac1750v2`).
-- `excluded_legacy_FTTH_units.csv`: 27 FTTH units excluded because the hardware is not credible -> `excluded_units_file` in config, used by the pipeline.
+- `excluded_legacy_ftth_units.csv`: 27 FTTH units excluded because the hardware is not credible -> `excluded_units_file` in config, used by the pipeline.
 - `excluded_legacy_units.csv`: all out-of-scope units (non-fiber and unused fiber). Includes the 27. Audit only -> `all_excluded_units_file`.
 
 Tests verify:
