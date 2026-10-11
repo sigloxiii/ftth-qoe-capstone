@@ -1,4 +1,5 @@
-# Postmortem: Convenience Bias + Instrument Bias - FCC MBA FTTH
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Postmortem: Convenience Bias + Instrument Bias - FCC MBA FTTH
 ## Metodología v1 (FAILED) vs v2.0 vs v2.1 (Hardware-Corrected Final)
 
 **Date:** 2026-09-30  

@@ -1,4 +1,5 @@
-# FTTH QoE Risk & Support Cost Optimization
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # FTTH QoE Risk & Support Cost Optimization
 > **From Network Telemetry to Churn Prevention and OPEX Reduction**
 
 [![License: MIT](https://img.shields.io/badge/Code_License-MIT-yellow.svg)](LICENSE)

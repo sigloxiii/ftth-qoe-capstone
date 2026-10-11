@@ -1,4 +1,5 @@
-# PowerBI - FTTH QoE Risk v2.1.3 - Data Methodology & Model
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # PowerBI - FTTH QoE Risk v2.1.3 - Data Methodology & Model
 
 **Dataset:** FCC Measuring Broadband America - Sept 2022 Validated
 **Scope:** 285 FTTH units = 258 valid + 27 excluded = fiber_units.csv + excluded_legacy_ffth_units.csv

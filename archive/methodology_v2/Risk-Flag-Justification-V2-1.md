@@ -1,4 +1,5 @@
-# Risk Flag Redefinition - v2.1.3
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Risk Flag Redefinition - v2.1.3
 **Dataset:** Sept 2022 - FCC MBA Validated - 258 FTTH Gigabit-capable units (filtered in Excel)
 **Final File:** `data/methodology_v2/ftth_final_258_v2_1.csv` - 257 units, 17 at risk (6.6%)
 **Location:** `D:/Capstone FFTH/data/methodology_v2_1_CORRECTED/` (local 6.8GB raw, never pushed to GitHub)

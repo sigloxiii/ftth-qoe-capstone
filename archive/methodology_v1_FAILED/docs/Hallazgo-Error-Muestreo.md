@@ -1,4 +1,5 @@
-# Hallazgo de Error en Muestreo - FTTH QoE
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Hallazgo de Error en Muestreo - FTTH QoE
 
 **Fecha:** 27/09/2026  
 **Archivo afectado:** `data/risk_flag_sample.csv` (0 filas)  

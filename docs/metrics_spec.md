@@ -1,231 +1,190 @@
-# Data Dictionary — FCC MBA Files Used in This Project
+# Metrics Specification — FTTH QoE Risk
 
-**Version:** 1.1.0 · **Last reviewed:** 2026-10-10
-**Purpose:** Document what each column of each input file means, based on the official FCC documentation, and record what has been verified against the real files (Step 0 in `docs/metrics_spec.md`).
+**Spec version:** 1.1.0 · **Last updated:** 2026-10-11
+**Status:** Baseline. Any change is made first in this document, then in `config.yaml` and `src/`, and recorded in the Changelog (section 12).
+**Central rule:** one implementation of each transformation (Python). Power BI does **not** recalculate metrics; it only visualizes them.
 
-TRADUCCION EJECTUABLE EN config.yaml
-
-**Changes in 1.1.0:** Step 0 results incorporated. Real headers compared with the FCC dictionary, time handling documented (new section 4), observed coverage for the 258 FTTH units added, verification checklist updated.
-
-**How to read the status labels**
-
-- **Documented:** stated in the FCC Technical Appendix data dictionary (see Sources).
-- **Verified:** confirmed in the real files or in the project data (see section 6).
-- **Pending:** not stated or ambiguous in the documentation; must be verified in the actual file before being used.
-
-> The dictionary below comes from the *Technical Appendix – Fixed Broadband 2023*, which accompanies the data release that includes the September 2022 files. The headers of the local files were compared with it (check 1 in section 6).
+**Related documents:** `config.yaml` (values), `docs/decisions.md` (decisions D-01 to D-05 with alternatives and evidence), `docs/data_dictionary.md` (columns and time handling), `docs/data_inspection.md` (Step 0 results), `docs/procedure_summary_v3.md` (procedure overview).
 
 ---
 
-## 1. Files Overview
+## 1. Scope and Population
 
-| File | Content | Test schedule (documented) | Use in v3 |
-| :--- | :--- | :--- | :--- |
-| `curr_udplatency.csv` | UDP round-trip time and packet loss | Hourly, 24×7, one on-net and one off-net node; ~2,000 packets per hour (fewer if the line is not idle) | **Latency and loss** |
-| `curr_udpjitter.csv` | UDP jitter (VoIP-style stream) | Hourly, 24×7, one on-net and one off-net node; 10 s at 64 kbps | **Jitter** |
-| `curr_udpcloss.csv` | Outage / disconnection events | Event-based (a row exists only when an event occurred) | Not used for loss. Optional future availability metric |
-| `unit-profile-sept2022.xlsx` | Unit metadata (ISP, state, tier, Whitebox model) | n/a | **Population definition** |
+- **Population source:** `unit-profile-sept2022.xlsx` (FCC MBA, 13th Report, September 2022 data).
+- **Filter 1:** `Technology = Fiber` → 285 units.
+- **Filter 2 (hardware):** `Whitebox Model IN (skwb8, skwb8p, ac1750v2)` → **258 units**. The 27 excluded units (`wnr3500l-high` 17, `wdr3600` 6, `wr1043nd` 2, `wr741nd` 1, `wr741ndv4` 1) are kept in `data/excluded_legacy_FTTH_units.csv` for audit. `data/excluded_legacy_units.csv` lists every Whitebox outside the analysis (non-fiber, or fiber not used) and includes those 27.
+- **Rationale:** the Whitebox is the measurement instrument. Models with insufficient CPU or port speed (FastEthernet, no hardware NAT) create artificial latency and loss (instrument bias).
+- **ISPs in scope:** Cincinnati Bell 120, Verizon 76, Frontier 62.
+- **Grain:** 1 row = 1 `Unit ID`.
+- **Analysis period (D-01):** 2022-09-12 to 2022-10-31, both ends inclusive, applied to `dtime` as stored. The files contain 50 days, not only September. The full period gives about 120 peak records per unit (the P95 rests on about 6 observations); September alone gives about 32 (about 1.6 observations), which is too few for a tail statistic.
 
-The other 13 files in the archive (DNS, web get, HTTP, ping, download/upload ping, IPv6 variants) are out of scope.
+## 2. Data Verification (Step 0, completed)
 
----
+Step 0 verified the three raw files (`curr_udplatency.csv`, `curr_udpjitter.csv`, `curr_udpcloss.csv`) against the FCC MBA Technical Appendix. Results are in `docs/data_inspection.md` and `docs/data_dictionary.md` (section 6). Items that shape this specification:
 
-## 2. Field Definitions
+1. **Headers** differ from the FCC dictionary: `ddate` is present in all three files; `location_id` is absent from `curr_udplatency`; the jitter file uses lowercase `latency`.
+2. **`curr_udpcloss`** records outage/disconnection events (`duration` in µs; `packets` = number of packets lost in the event, a count per event). `packets` is never used as a percentage and is never divided by a constant.
+3. **Offsets:** `timezone_offset_dst` is in hours (values -4, -5, -7) and is consistent with each unit's state. All 258 units observe daylight saving time (DST).
+4. **Coverage:** every one of the 258 units has rows in `curr_udplatency` and `curr_udpjitter`; 242 have rows in `curr_udpcloss` (event-based, so no rows means no events).
+5. **Invalid records:** 0 found for each rule in section 5.
+6. **Duplicates:** found and handled by the policy in section 5.
+7. **Servers:** a unit uses 1 to 4 test servers (68, 131, 45 and 14 units use 1, 2, 3 and 4). See section 4.
+8. **Pending:** distribution of `successes + failures` per row (dictionary check 6) and the jitter unit (µs is plausible but not proven).
 
-### 2.1 `curr_udplatency.csv`
+## 3. Time and Peak Window (D-03)
 
-| Field | Official definition | Unit | Use in v3 |
-| :--- | :--- | :--- | :--- |
-| `unit_id` | Unique identifier for an individual unit | int | Join key |
-| `dtime` | Time test finished | UTC (documented) | Peak window (with offset). **Not independently verified**, see section 4 |
-| `ddate` | Not listed in the dictionary; present in the real header | date | Not used. In the previewed rows it equals the date part of `dtime` |
-| `target` | Target hostname or IP address | text | **Pending:** server mixing within a unit (check 5) |
-| `rtt_avg` | Average RTT | µs | `p95_latency_ms` = P95 of `rtt_avg / 1000` |
-| `rtt_min` | Minimum RTT | µs | Not used |
-| `rtt_max` | Maximum RTT | µs | Not used |
-| `rtt_std` | Standard deviation in measured RTT | µs | Not used |
-| `successes` | Number of successes | count | Loss denominator |
-| `failures` | Number of failures (packets lost) | count | Loss numerator |
-| `location_id` | Internal key mapping to unit profile data. The dictionary says to ignore it | n/a | **Verified:** not present in the real header; ignored |
-
-**Packet loss (documented formula):** `failures / (successes + failures)`.
-A packet is counted as lost if no response arrives within 3 seconds.
-
-### 2.2 `curr_udpjitter.csv`
-
-| Field | Official definition | Unit | Use in v3 |
-| :--- | :--- | :--- | :--- |
-| `unit_id` | Unique identifier for an individual unit | int | Join key |
-| `dtime` | Time test finished | UTC (documented) | Peak window (with offset). **Not independently verified**, see section 4 |
-| `ddate` | Not listed in the dictionary; present in the real header | date | Not used. In the previewed rows it equals the date part of `dtime` |
-| `target` | Target hostname or IP address | text | **Pending:** server mixing within a unit (check 5) |
-| `packet_size` | Size of each UDP datagram | bytes | Not used |
-| `stream_rate` | Rate at which the UDP stream is generated | bits/s | Not used |
-| `duration` | Total duration of test | µs (general rule); preview shows ≈ 15 s | Not used. **Pending:** the documented test length is 10 s |
-| `packets_up_sent` | Packets sent upstream (measured by client) | count | Not used |
-| `packets_down_sent` | Packets sent downstream (measured by server) | count | Not used |
-| `packets_up_recv` | Packets received upstream (measured by server) | count | Not used |
-| `packets_down_recv` | Packets received downstream (measured by client) | count | Not used |
-| `jitter_up` | Upstream jitter measured | Not stated; values consistent with µs | `p95_jitter_ms` input. **Pending:** unit not proven |
-| `jitter_down` | Downstream jitter measured | Not stated; values consistent with µs | `p95_jitter_ms` input. **Pending:** unit not proven |
-| `latency` | 99th percentile of round trip times for all packets (the dictionary writes `Latency`; the real header is lowercase) | µs (general rule) | Not used; **not equivalent to `rtt_avg`** |
-| `successes` | Number of successes (always 1 or 0 for this test) | 0/1 | Not usable as a loss count. Preview shows 1 in all rows |
-| `failures` | Number of failures (always 1 or 0 for this test) | 0/1 | Not usable as a loss count. Preview shows 0 in all rows |
-
-### 2.3 `curr_udpcloss.csv`
-
-| Field | Official definition | Unit | Use in v3 |
-| :--- | :--- | :--- | :--- |
-| `unit_id` | Unique identifier for an individual unit | int | Join key |
-| `dtime` | Time test finished **in local time** | local (contradicts the general UTC note) | **Pending:** verify before any time filtering. See section 4 |
-| `ddate` | Date test finished in local time | local date | Not used |
-| `duration` | Duration of the outage/disconnection event | µs | Optional availability metric. Preview shows ≈ 4.5 s per event |
-| `target` | Hostname the outage was experienced to | text | Not used |
-| `address` | IP address of the host the outage was experienced to | IP | Not used |
-| `packets` | The number of packets we lost | **count per event** | **Not a percentage.** Not used for loss |
-
-No loss formula is defined for this file.
-
-### 2.4 `unit-profile-sept2022.xlsx` (and `fiber_units.csv`)
-
-The data dictionary in the Technical Appendix does **not** define the unit-profile fields; it only states that the file "identifies the various details of each test unit." The meanings below come from the column names. The status shows what has been confirmed in the project data.
-
-| Field | Meaning (inferred from name) | Status |
-| :--- | :--- | :--- |
-| `Unit ID` | Whitebox identifier; joins to `unit_id` | **Verified:** all 258 FTTH units have rows in `curr_udplatency` and `curr_udpjitter` |
-| `ISP` | Internet service provider | Pending |
-| `Technology` | Access technology (we keep `Fiber`) | Pending |
-| `State` | US state | **Verified:** consistent with the time zone offsets of every unit |
-| `Census` | Census region | Pending |
-| `timezone_offset` | UTC offset in hours (standard time) | **Verified:** consistent with `State`. Not used for this period (section 4) |
-| `timezone_offset_dst` | UTC offset in hours during daylight saving time | **Verified:** consistent with `State`. Used for every record (section 4) |
-| `Download` / `Upload` | Provisioned tier, Mbps | Pending |
-| `Whitebox Model` | Measurement device model | Pending |
-
----
-
-## 3. Cross-File Notes
-
-**Documented**
-
-- **Time zone:** "All dtime entries are in the UTC timezone." The `curr_udpcloss.csv` entry describes `dtime` as local time, which contradicts that note.
-- **Units:** "All durations are in microseconds unless otherwise noted." Jitter units are not explicitly stated.
-- **Loss source:** the appendix maps UDP packet loss to `curr_udplatency.csv`, not to `curr_udpcloss.csv`.
-- **Targets:** each test runs against one on-net and one off-net node, so a unit can have rows for two different target types per hour.
-- **Variable sample size:** the latency test sends fewer packets when the line is not idle, so `successes + failures` varies by hour.
-
-**Observed coverage for the 258 FTTH units (Step 0)**
-
-| File | FTTH rows | Units with data | `dtime` range |
-| :--- | ---: | ---: | :--- |
-| `curr_udplatency.csv` | 172,800 | 258 / 258 | 2022-09-12 00:00:05 – 2022-10-31 23:59:58 |
-| `curr_udpjitter.csv` | 152,730 | 258 / 258 | 2022-09-12 00:00:16 – 2022-10-31 23:59:42 |
-| `curr_udpcloss.csv` | 4,919 | 242 / 258 | 2022-09-12 00:10:17 – 2022-10-31 23:49:37 |
-
-- The files cover 50 days, **not only September**. In `curr_udplatency`, September has 46,205 rows (27%) and October 126,595 (73%).
-- Rows per unit (median / min / max): `curr_udplatency` 722 / 7 / 769; `curr_udpjitter` 642.5 / 35 / 720; `curr_udpcloss` 6 / 1 / 874 (units with at least one event).
-- `curr_udpcloss` is event-based: a unit with no outage events has no rows. The 16 units without rows are expected, not missing data.
-- `curr_udplatency` has about 10 distinct target servers for FTTH units, and each unit uses between 1 and 4 of them (68, 131, 45 and 14 units use 1, 2, 3 and 4 servers).
-
----
-
-## 4. Time Handling
-
-`dtime` is stored as a plain timestamp (`YYYY-MM-DD HH:MM:SS`) with no time zone marker. The FCC documentation states that it is in UTC. Local time is derived by adding the unit's UTC offset, which is stored in the unit profile.
-
-### 4.1 Time-related columns
-
-| Column | Source | Meaning | Notes |
-| :--- | :--- | :--- | :--- |
-| `dtime` | `curr_udplatency`, `curr_udpjitter` | Time the test finished | UTC per the FCC general note; not independently verified |
-| `dtime` | `curr_udpcloss` | Time the test finished | Described as local time in the FCC dictionary (contradicts the general note); not used in the base risk flag |
-| `ddate` | the three files above | Date of the test | In the previewed rows it equals the date part of `dtime`; not used |
-| `timezone_offset` | `fiber_units.csv` | Hours from UTC in standard time | Not used for this period |
-| `timezone_offset_dst` | `fiber_units.csv` | Hours from UTC during daylight saving time | Used for every record |
-
-### 4.2 How to read the offsets
-
-Offsets are constants per unit, expressed in hours relative to UTC. A negative sign means local time is behind UTC.
-
-Example: a unit with `timezone_offset = -5` and `timezone_offset_dst = -4` is in the Eastern time zone.
-
-- `-5`: standard time (EST, UTC−5), in winter.
-- `-4`: daylight saving time (EDT, UTC−4), in summer.
-
-Time zones in the FTTH population (258 units):
-
-| Time zone | `timezone_offset` | `timezone_offset_dst` | Units |
-| :--- | ---: | ---: | ---: |
-| Eastern | -5 | -4 | 220 |
-| Central | -6 | -5 | 20 |
-| Pacific | -8 | -7 | 18 |
-
-All 258 units are in states that observe daylight saving time.
-
-### 4.3 Which offset is used
-
-The data covers 2022-09-12 to 2022-10-31. Daylight saving time in the United States ended on 2022-11-06, after the last record. Therefore `timezone_offset_dst` applies to every record, and `timezone_offset` is not used. Using the standard offset would shift every timestamp by one hour.
-
-### 4.4 Conversion rule
+- `dtime` is a naive timestamp (`YYYY-MM-DD HH:MM:SS`). The FCC documentation states that it is UTC, but the project data show that it behaves as each unit's **local time**: the hourly RTT profile of Pacific units does not trail the Eastern one by the 3 hours that UTC would imply (correlation at a +3 h shift is about 0 or negative in Cable and DSL; best alignment -1 to -2 h, much closer to 0 than to +3). See `docs/decisions.md`, D-03.
+- **Base case:** `dtime` is read as local time. `local_hour = hour(dtime)`. No offset is added.
+- **Peak window:** local hour **≥ 19 and < 23** (19:00:00–22:59:59), 4 hours.
 
 ```python
-# dtime is a naive timestamp interpreted as UTC
-df["local_time"] = df["dtime"] + pd.to_timedelta(df["timezone_offset_dst"], unit="h")
-df["local_hour"] = df["local_time"].dt.hour
+# dtime already is the unit's local time; no offset is applied
+df["local_hour"] = df["dtime"].dt.hour
 peak = df[(df["local_hour"] >= 19) & (df["local_hour"] < 23)]  # peak window [19, 23)
 ```
 
-Because the offset is negative, the conversion subtracts hours, and the calendar date can change.
+- **Sensitivity (reported with every result):** UTC reading, as documented by the FCC. `local_hour = hour(dtime + timezone_offset_dst)`. `timezone_offset_dst` applies to every record because US DST ended on 2022-11-06, after the last record. `timezone_offset` is never used.
+- **Limitations:** the evidence for the local reading is indirect and contradicts the FCC general note. Fiber was not tested (only 18 Pacific units). `dtime` marks the end of each test, so records near 19:00 and 23:00 may partly belong to the adjacent hour.
 
-| `dtime` (UTC) | `timezone_offset_dst` | Local time | In peak window? |
-| :--- | ---: | :--- | :--- |
-| 2022-10-06 22:35:03 | -4 | 2022-10-06 18:35:03 | No |
-| 2022-10-07 01:10:00 | -4 | 2022-10-06 21:10:00 | Yes (previous calendar day) |
+## 4. Server Rule (D-04)
 
-### 4.5 Verification status and limitations
+A unit tests against 1 to 4 servers at different distances. The access line is the same for all of them, so RTT differences between servers reflect distance and route, not the line. Pooling servers makes a unit look worse because of server distance (17 units flagged with all servers vs 6 with the primary server, under the UTC reading).
 
-- **Verified:** the offsets are consistent with each unit's state, and no unit is in a state without daylight saving time.
-- **Not verified:** that `dtime` is UTC in `curr_udplatency` and `curr_udpjitter`. Mean RTT by hour (10.99 to 11.40 ms) and test counts by hour (6,979 to 7,501 per hour) are nearly flat for FTTH units, so they cannot distinguish UTC from local time. The convention follows the FCC documentation.
-- **Mitigation:** a sensitivity check recomputes `risk_flag` treating `dtime` as local time and reports how many units change flag.
-- **`curr_udpcloss`:** its time zone is ambiguous in the source. The file is excluded from the base risk flag.
-- **Window edges:** `dtime` marks the end of each test. The test duration is not documented in the sources reviewed, so records near 19:00 and 23:00 may partly belong to the adjacent hour.
+- **Base case, `primary_only`:** each unit is measured against its **primary server**, the `target` with the most peak-window records for that unit. Ties are broken by alphabetical order of `target`.
+- **Sensitivity (reported with every result):** all servers pooled.
 
----
+```python
+# primary target per unit: most peak-window records, ties by alphabetical order
+counts = peak.groupby(["unit_id", "target"]).size().reset_index(name="n")
+counts = counts.sort_values(["unit_id", "n", "target"], ascending=[True, False, True])
+primary = counts.drop_duplicates("unit_id")[["unit_id", "target"]]
+peak_primary = peak.merge(primary, on=["unit_id", "target"])
+```
 
-## 5. Implications for the Pipeline
+## 5. Metrics per Unit
 
-1. **Loss** comes only from `curr_udplatency` as `sum(failures) / sum(successes + failures) × 100`. Summing counts (instead of averaging hourly percentages) weights each hour by the packets actually sent, which matters because the number of packets varies.
-2. **`curr_udpcloss` is an outage table**, not a loss-percentage table. The earlier `packets/10` conversion has no basis in the documentation.
-3. **Jitter units:** the values in the first rows are consistent with microseconds (0.2 to 55.7 ms after conversion), but this is not proven. Confirm before the final conversion to milliseconds.
-4. **`target`:** FTTH units use between 1 and 4 distinct servers. Computing a single P95 per unit across servers at different distances could blend different paths. Quantification pending (check 5).
-5. **`latency` in the jitter file** is a P99 of a different test and must not be mixed with `rtt_avg`.
-6. **`dtime` in `curr_udpcloss`** may be local time. If that file is used for an availability metric, its time handling is different from the other two files.
-7. **Date range:** the files cover 2022-09-12 to 2022-10-31. The analysis period must be stated explicitly in the metrics specification.
+All metrics use **only records inside the peak window** and, in the base case, only the primary server. Order of operations:
 
-## 6. Verification Checklist (Step 0)
+1. Keep the 258 units and the analysis period (sections 1 and 3).
+2. Remove invalid records (log them) and handle duplicates (below).
+3. Keep records in the peak window.
+4. Apply the server rule (section 4).
+5. Count `n_peak_records`; units below `N_MIN` are reported separately and not scored.
+6. Compute the three metrics.
 
-Detailed results are recorded in `docs/data_inspection.md`.
-
-| # | Check | How | Result |
+| Metric | Source | Per-row value | Per-unit aggregation |
 | :--- | :--- | :--- | :--- |
-| 1 | Headers match this dictionary in all 3 files | Print header and rows of each file (`data/CSV_previews.md`) | **Done.** Differences: `ddate` present in all three files (not listed for latency and jitter); `location_id` absent in `curr_udplatency`; jitter header uses lowercase `latency` |
-| 2 | Jitter unit | Compare magnitude of `jitter_up/down` and `rtt_avg` | **Partial.** Values 218 to 55,714 give 0.2 to 55.7 ms if µs (plausible, not proven). `duration` ≈ 15 s versus the documented 10 s is an open discrepancy |
-| 3 | `dtime` format and time zone | Check offset suffix in the string; compare with `curr_udpcloss` | **Format verified:** `YYYY-MM-DD HH:MM:SS`, no offset suffix. The time zone cannot be read from the string (section 4) |
-| 4 | `timezone_offset_dst` correctness | Compare offsets with `State`; mean `rtt_avg` and test counts by hour | **Offsets verified** (consistent with state, no non-DST units). UTC versus local `dtime` is not distinguishable with this data; sensitivity check planned |
-| 5 | `target` values | List distinct targets and rows per unit and target; compare latency by target | **Partial.** About 10 servers; 1 to 4 per unit; median RTT per unit 2.5 to 17.2 ms. Servers appear assigned by proximity (CA and TX near 4 ms, OH 13.6 ms). Mixing within a unit pending |
-| 6 | Packets per hour | Distribution of `successes + failures` per row | **Pending.** In the first rows of `curr_udplatency` it ranges from 131 to 2,365 |
-| 7 | Units without data | Count the 258 population units missing from each file | **Done.** Latency 258/258, jitter 258/258, `curr_udpcloss` 242/258 (event-based, expected) |
-| 8 | Date range of `dtime` | Minimum and maximum per file | **Done.** 2022-09-12 to 2022-10-31 (section 3) |
+| `p95_latency_ms` | `curr_udplatency.rtt_avg` (µs) | `rtt_avg / 1000` | 95th percentile, linear interpolation |
+| `p95_jitter_ms` | `curr_udpjitter` (`jitter_up`, `jitter_down`, µs) | `(jitter_up + jitter_down) / 2 / 1000` | 95th percentile, linear interpolation |
+| `loss_pct` | See 5.1 | `failures / (successes + failures) * 100` | **Ratio of sums:** `sum(failures) / sum(successes + failures) * 100` |
+| `n_peak_records` | `curr_udplatency` | Count of valid peak records (after the server rule) | Count |
 
-## 7. Limitations of This Review
+- **Percentile:** linear interpolation (pandas `quantile(0.95)` default; equivalent to `PERCENTILE.INC` in Excel and Power BI, and to the default `List.Percentile` in Power Query).
+- **Ratio of sums:** weights each test by its number of packets. Averaging per-row percentages biases the result when the packet count varies.
+- **Jitter unit:** µs is plausible (0.2 to 55.7 ms after conversion) but not proven. Confirm before the final results.
 
-- The Technical Appendix text was read up to about 100,000 of 118,000 characters; the data dictionary was within the part read, but the unit-profile field list was not found.
-- The dictionary describes the files in the 2023 release; local headers may differ (see check 1).
-- The first-rows previews (`data/CSV_previews.md`) contain no FTTH units. They show structure only; FTTH-specific checks use the filtered data.
-- The time zone of `dtime` and the jitter units cannot be proven with the available data and follow the FCC documentation or the most plausible reading.
+### 5.1 Loss source
 
-## 8. Sources
+- **Single source (confirmed in the FCC MBA Technical Appendix 2023):** `failures` and `successes` from `curr_udplatency`. The appendix defines UDP packet loss as the fraction of UDP packets lost in the UDP latency test, maps it to `curr_udplatency.csv`, and gives `failures / (successes + failures)`. A packet is counted as lost if there is no response within 3 seconds.
+- **`curr_udpcloss` is not a loss percentage source.** It records outage events (count per event). It is never divided or averaged as a percentage.
+- **Optional future use:** `curr_udpcloss` could feed a separate **availability** metric (number and total duration of outages in the peak window). It stays outside the base `risk_flag` and would be added in a later version of this specification.
+- One loss source per specification version. No mixing.
 
-- FCC. *Technical Appendix – Fixed Broadband, 2023* (data dictionary, test schedule, loss definition): https://data.fcc.gov/download/measuring-broadband-america/2023/Technical-Appendix-fixed-2023.pdf
-- FCC. *2023 Fixed Measuring Broadband America Report* (packet loss definition, 3-second rule, latency test volume): https://data.fcc.gov/download/measuring-broadband-america/2023/2023-Fixed-Measuring-Broadband-America-Report.pdf
-- FCC. *Raw data releases – Measuring Broadband America* (data provided "as is"): https://www.fcc.gov/oet/mba/raw-data-releases
+### 5.2 Data quality
+
+- **Invalid records** (excluded and counted, never corrected with caps): `successes + failures <= 0`; `loss_pct` outside [0, 100]; `rtt_avg` null or negative; `jitter_up` or `jitter_down` null or negative; `dtime` not parseable. Step 0 found 0 records for each rule.
+- **Forbidden:** capping values (`min(x, 100)`) and filling nulls with 0 (`fillna(0)`). An invented zero makes a unit without data look perfect.
+- **Duplicates (D-05):** key (`unit_id`, `dtime`, `target`). If the duplicate rows are identical, keep one; if they conflict, drop all of them. Every case is counted in the log. Found: `curr_udplatency` 16 rows in 7 groups, all exact; `curr_udpjitter` 10 rows, 8 exact and 2 conflicting (unit 943232).
+- **Minimum data (D-02):** a unit enters the risk analysis if `n_peak_records >= N_MIN`, with `N_MIN = 50` (set in `config.yaml`). The top 5% of 50 records contains at least 2.5 observations, the smallest sample where a P95 is still defensible. 8 units fall below it before the server rule and 19 after it, so **239 of 258 units** are analyzed.
+- **Units without enough data:** listed in `data/processed/units_insufficient_data.csv` and left out of the risk denominator. Every report states `units_analyzed / 258`.
+- **Quality log:** the pipeline writes `data/processed/data_quality_log.csv` with the number of records discarded per rule and the duplicate counts.
+
+## 6. Risk Definition
+
+- **Status of the thresholds:** they are **operating thresholds defined by the project**, not values from a standard. Earlier citations to ITU-T G.114/Y.1541 and to specific sections of the FCC report are **not verified** (G.114 covers one-way delay and Y.1541 defines network classes with other values) and are not cited until confirmed in the source.
+- **Base thresholds** (parameters in `config.yaml`):
+
+| Parameter | Base value |
+| :--- | :--- |
+| `latency_p95_ms` | 20 |
+| `jitter_p95_ms` | 5 |
+| `loss_pct` | 1.0 |
+
+- **Rule:** `risk_flag = 1` if `p95_latency_ms > 20` **or** `p95_jitter_ms > 5` **or** `loss_pct > 1.0` (strictly greater). The individual flags (`flag_latency`, `flag_jitter`, `flag_loss`) are also stored to show which metric triggers the risk.
+- **Severity tier:** `risk_severe = 1` if `loss_pct > 10` or `p95_latency_ms > 50` or `p95_jitter_ms > 15`.
+- Thresholds are not chosen to reproduce a previous result. Changing one requires a change in this specification and a Changelog entry.
+
+## 7. Sensitivity Analysis (mandatory with every result)
+
+| Variant | What changes | Reference result (units flagged) |
+| :--- | :--- | ---: |
+| Base case | Local time + primary server | 10 |
+| UTC reading | `dtime + timezone_offset_dst`, primary server | 6 |
+| All servers | Local time, all servers pooled | pending (`step_9.py`) |
+| UTC reading, all servers | UTC reading, all servers pooled | 17 |
+
+- The 10 and 6 come from `step_6.py` and the 17 from `step_5.py`; the figures are indicative until the pipeline reproduces them over the same units.
+- Six units change flag between the local and UTC readings: 943226, 1006958, 3798765, 4190285, 24840041 and 25314149 (5 flagged only under the local reading, 1 only under the UTC reading).
+- **Threshold grid:** % of units at risk for latency {20, 30, 50} ms × loss {0.5, 1, 2, 5} %. Global loss is about 0.022%, so the loss grid is reviewed against the per-unit loss distribution before it is frozen.
+
+## 8. Reconciliation Python ↔ Power BI
+
+Power BI consumes `data/processed/ftth_qoe_unit_metrics.csv` generated by Python. If a metric is reimplemented in Power Query for audit:
+
+1. Export both tables and join by `Unit ID`.
+2. Tolerances: `p95_latency_ms` and `p95_jitter_ms` ±0.001 ms; `loss_pct` ±0.001 percentage points; `risk_flag` exact match; same number of units.
+3. Units that differ are analyzed one by one (window, time convention, server rule, nulls); reconciliation is never done by totals only.
+4. The result is saved in `docs/reconciliation.md`.
+
+Power Query equivalent of the base peak window: `Time.Hour([dtime]) >= 19 and Time.Hour([dtime]) < 23`, with no offset.
+
+## 9. Final Dataset Schema
+
+`data/processed/ftth_qoe_unit_metrics.csv` (UTF-8, no version in the name; versions live in git tags):
+
+`unit_id, isp, state, census, download_mbps, upload_mbps, whitebox_model, primary_target, n_peak_records, p95_latency_ms, p95_jitter_ms, loss_pct, flag_latency, flag_jitter, flag_loss, risk_flag, risk_severe`
+
+Automated tests (`tests/`):
+
+- `unit_id` is unique and a subset of `fiber_units.csv`.
+- 0 nulls in the metrics of analyzed units.
+- `0 <= loss_pct <= 100`; `p95_latency_ms > 0`.
+- `risk_flag == (flag_latency | flag_jitter | flag_loss)`.
+- `analyzed + insufficient == 258`.
+- The 27 units in `excluded_legacy_FTTH_units.csv` are contained in `excluded_legacy_units.csv`, and none of them is in `fiber_units.csv`.
+
+## 10. Business Impact
+
+- Dollar savings and avoided truck rolls are omitted: there is no source for the unit cost, and the baseline (v1) was invalidated by bias.
+- If an estimate is included, it goes as a **scenario** with explicit, parameterized assumptions (cost per truck roll, rate of unnecessary visits), labeled as illustrative.
+
+## 11. Limitations
+
+- Two months of data (2022-09-12 to 2022-10-31) from a non-random sample of volunteer units; results do not represent all FTTH subscribers.
+- 220 of the 258 units (85%) are in the US Eastern time zone.
+- Hardware is filtered by the nominal capability of each model, not by a per-unit throughput test.
+- The local-time reading of `dtime` rests on indirect evidence and contradicts the FCC general note; the UTC reading is reported as a sensitivity.
+- Thresholds are project-defined and their sensitivity is part of the reported results.
+- The jitter unit is not proven.
+
+## 12. Changelog
+
+- **1.1.0** (2026-10-11): translated to English; text recovered from v1.0.1 (commit `5cecc72`) after `metrics_spec.md` was overwritten by the data dictionary in commit `c8fcc37`.
+  - Analysis period set to 2022-09-12 to 2022-10-31 (D-01).
+  - `N_MIN = 50` (D-02).
+  - `dtime` treated as local time, no offset; UTC reading as sensitivity (D-03).
+  - Server rule `primary_only`; all servers as sensitivity (D-04).
+  - Duplicate policy (D-05).
+  - Order of operations and the sensitivity matrix added; `primary_target` added to the dataset; exclusion files and tests updated.
+  - Step 0 section rewritten as completed.
+  - Dictionary and config values aligned.
+- **1.0.1**: definition of `curr_udpcloss` confirmed with the FCC MBA Technical Appendix 2023 (outage events; `packets` = count of lost packets); single loss source = `curr_udplatency`.
+- **1.0.0**: baseline: window [19, 23) with `timezone_offset_dst`; loss as ratio of sums from `curr_udplatency`; no capping or `fillna(0)`; parameterized thresholds with sensitivity analysis.
+
+## 13. Open Items
+
+- **Primary server in the jitter file:** `step_5.py` and `step_6.py` define the primary server from the records of the file being processed. Confirm that the jitter metric uses the primary server of its own file and not the latency primary target, and state it here.
+- **`N_MIN` on jitter:** `N_MIN` is applied to `curr_udplatency` peak records. Decide whether a minimum is also required for jitter records.
+- **Loss grid:** review the {0.5, 1, 2, 5} % values against the per-unit loss distribution.
+- **Check 6:** distribution of `successes + failures`.
+- **Sensitivity matrix:** compute the "local time + all servers" cell (`step_9.py`).

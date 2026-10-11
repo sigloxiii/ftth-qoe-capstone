@@ -1,4 +1,5 @@
-# Business Task - Track B
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Business Task - Track B
 
 **Problem:** Silent churn in FTTH due to unmonitored peak-hour degradation + high OPEX from truck rolls.
 

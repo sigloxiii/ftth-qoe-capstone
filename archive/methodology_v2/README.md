@@ -1,4 +1,5 @@
-# FTTH QoE Risk & Support Cost Optimization
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # FTTH QoE Risk & Support Cost Optimization
 
 > **From Network Telemetry to Churn Prevention and OPEX Reduction — Methodology v2.2 CORRECTED (Power BI Audit + Python Fix)**
 > **Evolución: v1 FAILED → v2 → v2.1.3 FINAL (Hardware-Corrected) → v2.2 CORRECTED (Loss-Calculation-Corrected)**

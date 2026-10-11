@@ -1,4 +1,5 @@
-# Bitácora Detallada - Proceso Power BI - Análisis FTTH 258 Unidades
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Bitácora Detallada - Proceso Power BI - Análisis FTTH 258 Unidades
 
 **Proyecto:** powerbianalysis.pbix  
 **Metodología:** v2_1_CORRECTED  

@@ -1,4 +1,5 @@
-# Data Dictionary - Methodology v2.1.3 FINAL Hardware-Corrected
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Data Dictionary - Methodology v2.1.3 FINAL Hardware-Corrected
 
 > **Location:** `data/methodology_v2_1_CORRECTED/`
 > **Primary Files:** `fiber_units.csv` (258), `ftth_final_258_v2_1_3.csv` (258, output), `validated-data-sept2022.tar.gz` (6.8GB raw, git-ignored)

@@ -1,4 +1,5 @@
-# Limpieza de datos - FTTH QoE
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Limpieza de datos - FTTH QoE
 
 ## Problema detectado
 1. **Encoding**: Los CSV de FCC venían en UTF-16 LE (bytes FF FE). Causaba:

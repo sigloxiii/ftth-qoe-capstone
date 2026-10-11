@@ -1,4 +1,5 @@
-# Data Dictionary - Validated Sept 2022 - Verified Headers
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Data Dictionary - Validated Sept 2022 - Verified Headers
 
 | Columna | Tipo | Descripción negocio | Usado en |
 |---|---|---|---|

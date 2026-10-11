@@ -1,4 +1,5 @@
-# Definición de Métricas - FTTH QoE Risk & Churn Proxy
+> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> # Definición de Métricas - FTTH QoE Risk & Churn Proxy
 
 ## Objetivo de Negocio
 Transformar telemetría técnica (latencia/pérdida) en indicador financiero `risk_flag` que predice necesidad de truck roll.
