@@ -1,4 +1,6 @@
-> **HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+> *HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+>
+> 
 > # FTTH QoE Risk & Support Cost Optimization
 > **From Network Telemetry to Churn Prevention and OPEX Reduction**
 
@@ -14,7 +16,6 @@
 * **Project Type:** Google Data Analytics Capstone | **Track B (Self-directed Project)**
 * **Author:** **Ing. Rafael Cansigno Peláez** *(Telecom Engineer | CCNA 2003 → Telecom Data Analyst 2026)*
 * **Tableau Public:** [rafael.cansigno](https://public.tableau.com/app/profile/rafael.cansigno/vizzes)
-* **Languages:** English | [Español](./README_ES.md)
 
 ---
 

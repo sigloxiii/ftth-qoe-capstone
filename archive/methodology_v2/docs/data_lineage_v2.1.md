@@ -1,3 +1,5 @@
+> *HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+
 # Data Lineage & Inventory - FTTH QoE Risk Optimization v2.1 (Hardware-Corrected)
 
 > **Project:** FTTH QoE Risk & Support Cost Optimization (Methodology v2.1 Hardware-Corrected)  

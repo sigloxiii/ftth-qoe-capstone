@@ -1,3 +1,5 @@
+> *HISTORICAL - superseded by docs/metrics_spec.md. Do not use as input.**
+
 # Data Dictionary - FCC Measuring Broadband America 2023-2024
 
 **Source:** https://www.fcc.gov/general/measuring-broadband-america
