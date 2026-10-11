@@ -1,89 +1,101 @@
-# FTTH QoE Risk Optimization - Executive Project Brief
-### Capstone: Google Data Analytics + FCC MBA Data | Sept 2022
+# FTTH QoE Risk Analysis - Executive Project Brief
+### Capstone: Google Data Analytics + FCC MBA Data | 2022-09-12 to 2022-10-31 | Methodology v3.0
 
->Quick technical cheat-sheet and Business context for non-technical readers.
+> Quick technical cheat-sheet and business context for non-technical readers. Source of truth for every rule and value: `docs/metrics_spec.md` (v1.1.0) and `config.yaml`.
 
 ---
 
 ### 1. What is this project about? (For everyone)
 
-Imagine you are a fiber ISP (FTTH). You have thousands of homes with a small white box (Whitebox) measuring internet quality every hour.
+Imagine you are a fiber ISP (FTTH). Some of your homes have a small white box (Whitebox) that measures internet quality every hour.
 
-The problem: At night, 19:00-23:00, when everyone streams, games, and video-calls, some homes experience lag. If you don't detect them, they churn to a competitor.
+The question: in the local evening peak (19:00-22:59), when many people stream, game and video-call, which homes show degraded quality? And how much of that degradation is real, versus an artifact of the measuring device or of the analysis?
 
-**This project answers:** Which of my fiber homes are at risk of poor experience and how much money do I lose if I don't act?
+**Key result:** pending. The scope is 258 FTTH units. The number of units analyzed and the number at risk will be published only after the pipeline run and the Python ↔ Power BI reconciliation are complete (see the README roadmap). Figures from earlier versions (v1, v2.x) are invalid and are not reused.
 
-**Key Result:** Out of 257 valid fiber homes, **17 are at risk (6.61%)**. Proactive fix saves ~$690/month in churn.
+### 2. What does each record measure? (No jargon)
 
-### 2. What does each register measure? (No jargon)
+Each row in the raw data is NOT a customer and NOT a single packet. It is **one hourly test** of one Whitebox.
 
-Each row in the raw data is NOT a customer, it's a **test packet**.
+*   **Latency test (`curr_udplatency`):** one row summarizes the test: average round-trip time (`rtt_avg`) and how many packets got a reply (`successes`) or not (`failures`). The packet count varies by row (131 to 2,365 in the first rows inspected).
+*   **Jitter test (`curr_udpjitter`):** one row is one UDP stream; it reports how much the delay varied (`jitter_up`, `jitter_down`).
+*   **Path:** Whitebox -> home network -> ISP -> Internet -> test server (all servers are SamKnows-hosted).
 
-*   **Born at home:** Whitebox generates a small UDP packet (like a ping).
-*   **Travels:** Whitebox -> Home Router -> ONT (fiber box) -> light over fiber -> Splitter -> OLT at central office -> ISP Core -> Internet Backbone -> MBA Test Server.
-*   **Returns:** Server replies, Whitebox measures how long it took (latency), how much it varied (jitter), and if it was lost (loss).
-
-**Under normal circumstances (healthy fiber):**
-Latency < 15ms, Jitter < 3ms, Loss 0%. Everything smooth.
+**Reference values observed in the data:** median RTT per unit between 2.5 and 17.2 ms; global packet loss about 0.022%.
 
 **When we mark `risk_flag = 1`:**
-Not because of one bad packet. It's because during the WHOLE month, at peak time, 95% of its packets are slow. The 95th percentile (p95) > 20ms. That means that home, every night, sees frozen videos.
+During the peak window, against the unit's primary server, over the 50 observed days, at least one of these holds:
+- P95 latency > 20 ms, or
+- P95 jitter > 5 ms, or
+- packet loss > 1%.
+
+These thresholds are **project-defined operating thresholds**, not values from a standard. P95 means that 95% of the unit's peak-hour tests are at or below that value; a unit is flagged when its worst 5% of peak-hour tests are already above the limit. It is computed over hourly averages, so brief spikes inside a single test are not visible in it.
 
 ### 3. Datasets Used (Technical Cheat-Sheet)
 
 | File | Role | 1 row = | Key Columns |
 | :--- | :--- | :--- | :--- |
-| `unit-profile-sept2022.csv` | DIM - Who | 1 Whitebox / home | `unit_id, Technology, Model, provisioned_down/up, timezone_offset` |
-| `curr_udplatency.csv` | FACT - Latency | 1 UDP probe | `unit_id, timestamp_utc, rtt_avg (us), success/failures` |
-| `curr_udpjitter.csv` | FACT - Jitter | 1 UDP burst | `unit_id, timestamp_utc, jitter_up/down` |
-| `curr_udploss.csv` | FACT - Loss | 1 loss test | `unit_id, timestamp_utc, packets_sent/lost` |
-| `fiber_units.csv` | Clean DIM (258) | 1 valid home | Filter: `Model IN (skwb8 227, ac1750v2 28, skwb8p 3)` |
-| `ftth_final_258_v2_1.csv` | Aggregated FACT (257) | 1 home summarized at peak | `unit_id, p95_latency_ms, p95_jitter_ms, avg_loss_pct, risk_flag` |
+| `unit-profile-sept2022.xlsx` | DIM - Who | 1 Whitebox / home | `Unit ID, ISP, Technology, State, Whitebox Model, Download, Upload, timezone_offset_dst` |
+| `fiber_units.csv` | Clean DIM (258) | 1 in-scope home | Filter: `Whitebox Model IN (skwb8 227, ac1750v2 28, skwb8p 3)` |
+| `curr_udplatency.csv` | FACT - Latency + loss | 1 hourly test | `unit_id, dtime, target, rtt_avg (µs), successes, failures` |
+| `curr_udpjitter.csv` | FACT - Jitter | 1 UDP stream test | `unit_id, dtime, target, jitter_up, jitter_down` |
+| `curr_udpcloss.csv` | Outage events (reference only) | 1 outage event | `unit_id, dtime, duration, packets` - NOT a loss percentage |
+| `ftth_qoe_unit_metrics.csv` | Output FACT (planned) | 1 analyzed unit | `unit_id, p95_latency_ms, p95_jitter_ms, loss_pct, risk_flag, risk_severe` |
 
-**Golden Rule:** `raw microseconds / 1000 = ms`. `p95` must be calculated with `PERCENTILE.INC` in both Python and PowerBI, NOT with `AVERAGE`.
+**Golden rules:**
+- raw microseconds / 1000 = ms.
+- P95 uses linear interpolation (`quantile(0.95)` in pandas = `PERCENTILE.INC` in Excel and Power BI), never `AVERAGE`.
+- Loss = `sum(failures) / sum(successes + failures) * 100` (ratio of sums, from `curr_udplatency`).
+- No capping and no `fillna(0)`: invalid records are excluded and counted.
 
 ### 4. Full Process (6 Steps for Quick Review)
 
-**Step 1 - Instrument Bias Fix (Your v2.1.3 differentiator):**
-v1 showed 21% risk because it included legacy hardware: `wnr3500l-high (480MHz CPU caps at <95Mbps)` and `wdr3600 (no HW NAT)` creating false latency.
-Fix: `INCLUDE Model IN (skwb8, skwb8p, ac1750v2) AND capacity >= provisioned*1.1`. Leaves 258.
+**Step 1 - Population (instrument bias fix):**
+The Whitebox is the measuring instrument; a legacy model that cannot forward at line rate creates the degradation it reports. From 285 FTTH units, keep Whitebox models `skwb8`, `skwb8p`, `ac1750v2` -> **258 units**. The 27 legacy units are listed in `data/excluded_legacy_ftth_units.csv`. The filter uses the nominal capability of each model, not a per-unit throughput test.
 
-**Step 2 - Time Normalization:**
-`local_time = timestamp_utc + timezone_offset`. Filter `local_hour BETWEEN 19 AND 22`. This is prime time.
+**Step 2 - Peak window (D-03):**
+`dtime` is treated as the unit's **local** time (the data does not behave as UTC, as the FCC documentation says). `local_hour = hour(dtime)`, no offset added. Peak window: local hour >= 19 and < 23. The UTC reading is reported as a sensitivity with every result.
 
-**Step 3 - Aggregation:**
-Per `unit_id` at peak: `p95_latency = P95(rtt_avg/1000)`, `p95_jitter = P95(avg(up/down)/1000)`, `avg_loss = MEAN(loss)`.
+**Step 3 - Server rule (D-04):**
+A unit uses 1 to 4 test servers at different distances. Metrics use the unit's **primary server** (the target with the most peak-window records; ties by alphabetical order). All servers pooled is reported as a sensitivity.
 
-**Step 4 - Risk Flag:**
-`risk_flag = IF(p95_latency_ms > 20, 1, 0)`. Result: 17/257 = 6.61%.
-Why 257 not 258? 1 unit had no tests during peak, so it drops. Expected.
+**Step 4 - Metrics per unit (peak window only):**
+`p95_latency = P95(rtt_avg / 1000)`, `p95_jitter = P95((jitter_up + jitter_down) / 2 / 1000)`, `loss_pct` as above. Units with fewer than 50 peak records (`N_MIN`, D-02) are reported separately and are not scored.
 
-**Step 5 - PowerBI :**
-Import 2 tables. DO NOT filter hour again (already filtered). Relationship `fiber_units[Unit ID] -> ftth_final[unit_id]` One-to-Many Single. DAX Measures: `PERCENTILEX.INC`, `COUNTROWS=257`, `SUM(risk_flag)=17`.
+**Step 5 - Risk flag:**
+`risk_flag = 1` if latency > 20 ms OR jitter > 5 ms OR loss > 1% (strictly greater). `risk_severe` uses 50 ms / 15 ms / 10%. A threshold sensitivity grid is reported with every result.
 
-**Step 6 - Act:**
-Executive Dashboard: % Risk + $ ROI. NOC Dashboard: table by `unit_id` with 19-23h timeline for triage.
+**Step 6 - Power BI:**
+Power BI consumes only `data/processed/ftth_qoe_unit_metrics.csv`; it does not recalculate metrics. Python and Power BI are reconciled per `Unit ID` with explicit tolerances (`docs/reconciliation.md`, planned).
 
 ### 5. Quick Glossary (For non-technical stakeholder)
- (FULL Glossay in /docs)
+ (FULL Glossary in `docs/glossary_of_terms.md`)
 *   **FTTH:** Fiber To The Home.
-*   **Whitebox:** FCC measurement router, not the customer router.
-*   **p95:** 95% of the time it's better than this value. If p95 is high, it's almost always bad at peak.
-*   **Bufferbloat:** Packet queue in home router when upload saturates.
-*   **OLT/ONT:** OLT is at ISP central, ONT is box at home. Light travels between them.
-*   **Churn:** Customer leaving. Each retained customer worth ~$135.
+*   **Whitebox:** FCC measurement device, not the customer router.
+*   **P95:** 95% of the tests are at or below this value. If P95 is high, the worst tests at peak are bad.
+*   **Bufferbloat:** Packet queue in the home router when upload saturates.
+*   **OLT/ONT:** OLT is at the ISP central office, ONT is the box at home. Light travels between them.
+*   **Churn:** Customer leaving.
 
 ### 6. Stakeholders & Business Questions
 
-**Stakeholders:** NOC Manager (wants actionable list), CXO (wants $).
+**Stakeholders:** NOC Manager (wants an actionable list), CXO (wants the size of the problem).
 
 **3 Business Questions Answered:**
-1. What % of our fiber base has poor QoE at peak?
-2. Which are the specific units to intervene?
-3. What is the financial impact of proactive intervention?
+1. What share of the analyzed fiber units has poor QoE at peak?
+2. Which are the specific units to review?
+3. How robust is that result to the time convention, the server rule and the thresholds (sensitivity analysis)?
 
-**3 Recommendations:**
-1. Auto-alert if p95>20ms for 3 consecutive days.
-2. Remote triage: check OLT and bufferbloat before dispatching tech.
-3. Proactive SMS: "We detected nighttime slowness, want us to check?" Reduces churn by 30%.
+**3 Proposed Actions (to be confirmed once results exist):**
+1. Alert when a unit's peak P95 stays above the threshold for several consecutive days (number of days to be defined).
+2. Remote triage (OLT, bufferbloat) before dispatching a technician.
+3. Contact flagged customers proactively.
 
+Financial impact (churn, truck rolls) is not estimated: there is no source for the unit costs. If an estimate is added, it will be a clearly labeled scenario with explicit assumptions.
+
+### 7. Limitations
+
+- Two months of data from a non-random sample of volunteer units; results do not represent all FTTH subscribers.
+- 220 of the 258 units (85%) are in the US Eastern time zone.
+- The local-time reading of `dtime` rests on indirect evidence and contradicts the FCC general note.
+- The jitter unit (µs) is plausible but not proven.
