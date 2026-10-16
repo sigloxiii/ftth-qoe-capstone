@@ -41,12 +41,20 @@
 #  - timezone_offset_dst is in HOURS (values -4, -5, -7); all 258 units observe DST
 #  - FTTH records span 2022-09-12 to 2022-10-31 (50 days), not only September
 #  - Median RTT per unit is 2.5-17.2 ms; global loss is about 0.022%
+#  - successes + failures ranges from 50 to 2,401 per row (step_9.py, check 6)
+#  - Jitter unit is microseconds, supported indirectly: median jitter / rtt_std = 0.83,
+#    Spearman 0.816 per unit (step_10.py); no FCC documentation states it
+#
+# DECISIONS MIRRORED HERE (docs/decisions.md): D-01 to D-05 and D-06 to D-10
+#  D-06 one server per unit for all metrics | D-07 jitter minimum records
+#  D-08 sensitivity grid | D-09 jitter stays in the rule, thresholds unchanged
+#  D-10 episodic latency events (two descriptive columns)
 # ==============================================================================
 
 project:
   name: ftth-qoe-capstone
   methodology_version: "3.0"
-  spec_version: "1.1.0"   # docs/metrics_spec.md version this file mirrors
+  spec_version: "1.2.0"   # docs/metrics_spec.md version this file mirrors
   description: "Identify FTTH units at risk of poor QoE during local evening peak hours, using FCC MBA telemetry (Sept-Oct 2022), and separate real degradation from measurement artifacts"
   author: "Eng. Rafael Cansigno P. | Google Data Analytics Capstone"
 
@@ -125,7 +133,7 @@ time:
   # FCC MBA reports: to be added once verified in the source.
   sensitivity_utc_reading:       # Reported with every result
     enabled: true
-    rule: "local_hour = hour(dtime + timezone_offset_dst); expected 6 flagged units with primary_only (vs 10 in the base case)"
+    rule: "local_hour = hour(dtime + timezone_offset_dst); expected 4 units at risk with primary_only (vs 5 in the base case), N_MIN applied (step_9.py)"
     timezone_col: "timezone_offset_dst"
     timezone_unit: "hours"
 
@@ -134,19 +142,21 @@ time:
 # ------------------------------------------------------------------------------
 # A unit uses 1 to 4 servers at different distances. The access line is the same
 # for all of them, so RTT differences between servers reflect distance and route,
-# not the line. Mixing servers inflated risk: 17 units flagged with all servers
-# versus 6 with the primary server only (step_5.py).
+# not the line. Mixing servers inflated risk: with N_MIN applied, 21 units at risk
+# with all servers versus 5 with the primary server only (local time, step_9.py).
 server_rule:
   mode: "primary_only"   # DECISION D-04 (2026-10-11): confirmed base case
   primary_definition: "target with the most peak-window records for the unit"
+  primary_source_file: "udplatency"      # DECISION D-06: primary server comes from the latency file
+  apply_to: ["latency", "loss", "jitter"]   # D-06: same server for all three metrics, no own primary for jitter
   tie_break: "alphabetical order of target"
   report_sensitivity_all_servers: true   # Variant A is reported as a sensitivity analysis
 
 # ------------------------------------------------------------------------------
 # METRICS - Per unit, peak window only, after the server rule
 # ------------------------------------------------------------------------------
-# Raw RTT and jitter are in microseconds (duration of the jitter test ~15 s;
-# jitter values consistent with 0.2-55 ms). The jitter unit is not proven.
+# Raw RTT and jitter are in microseconds (duration of the jitter test ~15 s versus the
+# documented 10 s, still open). The jitter unit is supported indirectly, not documented.
 metrics:
   percentile: 0.95
   percentile_method: "linear"   # pandas quantile default; same as PERCENTILE.INC in Excel/Power BI
@@ -160,12 +170,18 @@ metrics:
     source_cols: ["jitter_up", "jitter_down"]
     per_record: "(jitter_up + jitter_down) / 2"
     to_ms_divisor: 1000
+    min_peak_records: 50                 # DECISION D-07 (N_MIN_JITTER in the spec): peak jitter records on the primary server
+    below_min: "null"                    # p95_jitter_ms stays null and is reported; never 0; latency and loss still scored
   loss:
     source_file: "udplatency"          # NOT curr_udpcloss
     source_cols: ["successes", "failures"]
     formula: "sum(failures) / sum(successes + failures) * 100"
     method: "ratio_of_sums"            # Weights each test by its packets; successes+failures varies by row
     warning: "Do NOT use curr_udpcloss.packets: it is an outage event count, not a percentage"
+  descriptive:                           # DECISION D-10: descriptive columns for every analyzed unit; NOT part of risk_flag
+    n_days_above_threshold: "distinct dates with at least one peak record where rtt_avg / 1000 > thresholds.base.latency_p95_ms"
+    p95_latency_without_worst_day_ms: "P95 of rtt_avg / 1000 after removing all peak records of the date with the most records above the threshold (ties: earliest date); equals p95_latency_ms if no record is above the threshold"
+    episodic_label: "p95_latency_without_worst_day_ms <= thresholds.base.latency_p95_ms"   # report wording only; persistent otherwise
 
 # ------------------------------------------------------------------------------
 # THRESHOLDS - Risk definition
@@ -173,6 +189,7 @@ metrics:
 # Project-defined operating thresholds, NOT values attributed to a standard.
 # Base values mirror docs/metrics_spec.md section 6. They are not chosen to
 # reproduce a previous result. Changing them requires a spec change and changelog entry.
+# DECISION D-09: jitter stays in the rule although no unit exceeds it (max 4.48 ms in the base case).
 thresholds:
   base:
     latency_p95_ms: 20
@@ -183,10 +200,14 @@ thresholds:
     jitter_p95_ms: 15
     loss_pct: 10
   risk_rule: "risk_flag = 1 if p95_latency_ms > latency_p95_ms OR p95_jitter_ms > jitter_p95_ms OR loss_pct > loss_pct (strictly greater)"
-  sensitivity:               # % of units at risk for every combination; reported with every result
+  sensitivity:               # DECISION D-08: units at risk (and % of analyzed) for every combination; reported with every result
     latency_p95_ms: [20, 30, 50]
-    loss_pct: [0.5, 1, 2, 5]
-  # Review the loss grid after the per-unit distribution: global loss is about 0.022%.
+    jitter_p95_ms: [3, 4, 5]
+    loss_pct: [0.05, 0.1, 0.5, 1.0]
+    n_min_peak_records: [30, 50, 100]
+  # Grid chosen against the per-unit distributions (step_9.py, 237 analyzed units): loss maximum 1.66%,
+  # units above 0.05 / 0.1 / 0.5 / 1%: 18 / 10 / 2 / 1; P95 jitter maximum 4.48 ms. The old loss grid
+  # {0.5, 1, 2, 5} left most cells empty.
 
 # ------------------------------------------------------------------------------
 # DATA QUALITY - No capping, no zero-filling
@@ -197,8 +218,8 @@ thresholds:
 data_quality:
   no_capping: true
   no_fillna_zero: true
-  n_min_peak_records: 50   # Top 5% of 50 records holds at least 2.5 observations; excludes 8 units in step_1.py (before the server rule)
-  invalid_record_rules:    # Excluded and counted; Step 0 found 0 records for each rule
+  n_min_peak_records: 50   # Top 5% of 50 records holds at least 2.5 observations; counted AFTER the server rule on latency peak records: 21 units below (237 analyzed) in the base case; 8 units below before the server rule (step_1.py)
+  invalid_record_rules:    # Excluded and counted; Step 0 and step_9.py found 0 records for each rule
     - "successes + failures <= 0"
     - "loss_pct outside [0, 100]"
     - "rtt_avg null or negative"
@@ -206,7 +227,7 @@ data_quality:
     - "dtime not parseable"
   duplicates:
     key: ["unit_id", "dtime", "target"]
-    policy: "keep_one_if_identical_else_drop_all"   # Decided after step_4.py: latency 16 rows in 7 groups, all exact; jitter 10 rows, 8 exact and 2 conflicting (unit 943232)
+    policy: "keep_one_if_identical_else_drop_all"   # Decided after step_4.py: latency 16 rows in 7 groups, all exact; jitter 10 rows, 8 exact and 2 conflicting (unit 943232). Applied in step_9.py: latency 9 exact copies removed; jitter 4 exact copies removed, 2 conflicting rows dropped
   log_file: "data/processed/data_quality_log.csv"
 
 # ------------------------------------------------------------------------------
@@ -219,4 +240,5 @@ output:
   processed_dir: "data/processed/"
   unit_metrics_file: "ftth_qoe_unit_metrics.csv"
   insufficient_data_file: "units_insufficient_data.csv"
+  unit_metrics_columns: ["unit_id", "isp", "state", "census", "download_mbps", "upload_mbps", "whitebox_model", "primary_target", "n_peak_records", "n_peak_jitter_records", "p95_latency_ms", "p95_jitter_ms", "loss_pct", "n_days_above_threshold", "p95_latency_without_worst_day_ms", "flag_latency", "flag_jitter", "flag_loss", "risk_flag", "risk_severe"]   # spec section 9
   reconciliation_doc: "docs/reconciliation.md"

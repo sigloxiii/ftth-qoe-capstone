@@ -1,10 +1,10 @@
 # Metrics Specification — FTTH QoE Risk
 
-**Spec version:** 1.1.0 · **Last updated:** 2026-10-11
+**Spec version:** 1.2.0 · **Last updated:** 2026-10-15
 **Status:** Baseline. Any change is made first in this document, then in `config.yaml` and `src/`, and recorded in the Changelog (section 12).
 **Central rule:** one implementation of each transformation (Python). Power BI does **not** recalculate metrics; it only visualizes them.
 
-**Related documents:** `config.yaml` (values), `docs/decisions.md` (decisions D-01 to D-05 with alternatives and evidence), `docs/data_dictionary.md` (columns and time handling), `docs/data_inspection.md` (Step 0 results), `docs/procedure_summary_v3.md` (procedure overview).
+**Related documents:** `config.yaml` (values), `docs/decisions.md` (decisions D-01 to D-10 with alternatives and evidence), `docs/data_dictionary.md` (columns and time handling), `docs/data_inspection.md` (Step 0 results), `docs/procedure_summary_v3.md` (procedure overview).
 
 ---
 
@@ -26,10 +26,11 @@ Step 0 verified the three raw files (`curr_udplatency.csv`, `curr_udpjitter.csv`
 2. **`curr_udpcloss`** records outage/disconnection events (`duration` in µs; `packets` = number of packets lost in the event, a count per event). `packets` is never used as a percentage and is never divided by a constant.
 3. **Offsets:** `timezone_offset_dst` is in hours (values -4, -5, -7) and is consistent with each unit's state. All 258 units observe daylight saving time (DST).
 4. **Coverage:** every one of the 258 units has rows in `curr_udplatency` and `curr_udpjitter`; 242 have rows in `curr_udpcloss` (event-based, so no rows means no events).
-5. **Invalid records:** 0 found for each rule in section 5.
-6. **Duplicates:** found and handled by the policy in section 5.
+5. **Invalid records:** 0 found for each rule in section 5.2 (confirmed again in `step_9.py`, both files).
+6. **Duplicates:** found and handled by the policy in section 5.2.
 7. **Servers:** a unit uses 1 to 4 test servers (68, 131, 45 and 14 units use 1, 2, 3 and 4). See section 4.
-8. **Pending:** distribution of `successes + failures` per row (dictionary check 6) and the jitter unit (µs is plausible but not proven).
+8. **Packets per row (check 6, closed):** `successes + failures` ranges from 50 to 2,401 per row (P1 = 65, median 2,065, 172,791 rows). The count varies widely by row, which is why loss is a ratio of sums (section 5).
+9. **Jitter unit:** microseconds, supported indirectly: per-unit median jitter 0.70 ms against median `rtt_std` 0.96 ms (median ratio 0.83, Spearman 0.816, `step_10.py`). No documentation states the unit; see section 11.
 
 ## 3. Time and Peak Window (D-03)
 
@@ -46,19 +47,21 @@ peak = df[(df["local_hour"] >= 19) & (df["local_hour"] < 23)]  # peak window [19
 - **Sensitivity (reported with every result):** UTC reading, as documented by the FCC. `local_hour = hour(dtime + timezone_offset_dst)`. `timezone_offset_dst` applies to every record because US DST ended on 2022-11-06, after the last record. `timezone_offset` is never used.
 - **Limitations:** the evidence for the local reading is indirect and contradicts the FCC general note. Fiber was not tested (only 18 Pacific units). `dtime` marks the end of each test, so records near 19:00 and 23:00 may partly belong to the adjacent hour.
 
-## 4. Server Rule (D-04)
+## 4. Server Rule (D-04, D-06)
 
-A unit tests against 1 to 4 servers at different distances. The access line is the same for all of them, so RTT differences between servers reflect distance and route, not the line. Pooling servers makes a unit look worse because of server distance (17 units flagged with all servers vs 6 with the primary server, under the UTC reading).
+A unit tests against 1 to 4 servers at different distances. The access line is the same for all of them, so RTT differences between servers reflect distance and route, not the line. Pooling servers makes a unit look worse because of server distance (21 units at risk with all servers vs 5 with the primary server in the base case; 17 vs 4 under the UTC reading; `N_MIN` applied, `step_9.py`).
 
-- **Base case, `primary_only`:** each unit is measured against its **primary server**, the `target` with the most peak-window records for that unit. Ties are broken by alphabetical order of `target`.
+- **Base case, `primary_only` (D-04):** each unit is measured against its **primary server**, the `target` with the most peak-window records for that unit. Ties are broken by alphabetical order of `target`.
+- **One rule for all metrics (D-06):** the primary server is determined **once per unit, from the peak records of the latency file**, and is used for latency, loss and jitter. The jitter file does not get its own primary server. If a unit has no peak jitter records on that server, its jitter is null (section 5).
 - **Sensitivity (reported with every result):** all servers pooled.
 
 ```python
-# primary target per unit: most peak-window records, ties by alphabetical order
-counts = peak.groupby(["unit_id", "target"]).size().reset_index(name="n")
+# primary target per unit: most peak-window latency records, ties by alphabetical order
+counts = peak_lat.groupby(["unit_id", "target"]).size().reset_index(name="n")
 counts = counts.sort_values(["unit_id", "n", "target"], ascending=[True, False, True])
 primary = counts.drop_duplicates("unit_id")[["unit_id", "target"]]
-peak_primary = peak.merge(primary, on=["unit_id", "target"])
+peak_lat_primary = peak_lat.merge(primary, on=["unit_id", "target"])
+peak_jit_primary = peak_jit.merge(primary, on=["unit_id", "target"])  # D-06: same server for jitter
 ```
 
 ## 5. Metrics per Unit
@@ -66,22 +69,28 @@ peak_primary = peak.merge(primary, on=["unit_id", "target"])
 All metrics use **only records inside the peak window** and, in the base case, only the primary server. Order of operations:
 
 1. Keep the 258 units and the analysis period (sections 1 and 3).
-2. Remove invalid records (log them) and handle duplicates (below).
+2. Remove invalid records (log them) and handle duplicates (section 5.2).
 3. Keep records in the peak window.
 4. Apply the server rule (section 4).
-5. Count `n_peak_records`; units below `N_MIN` are reported separately and not scored.
-6. Compute the three metrics.
+5. Count `n_peak_records` (latency) and `n_peak_jitter_records` (jitter); units with `n_peak_records < N_MIN` are reported separately and not scored.
+6. Compute the three metrics. `p95_jitter_ms` is computed only if `n_peak_jitter_records >= N_MIN_JITTER` (D-07); otherwise it stays null.
+7. Compute the descriptive columns of D-10.
 
 | Metric | Source | Per-row value | Per-unit aggregation |
 | :--- | :--- | :--- | :--- |
 | `p95_latency_ms` | `curr_udplatency.rtt_avg` (µs) | `rtt_avg / 1000` | 95th percentile, linear interpolation |
-| `p95_jitter_ms` | `curr_udpjitter` (`jitter_up`, `jitter_down`, µs) | `(jitter_up + jitter_down) / 2 / 1000` | 95th percentile, linear interpolation |
+| `p95_jitter_ms` | `curr_udpjitter` (`jitter_up`, `jitter_down`, µs) | `(jitter_up + jitter_down) / 2 / 1000` | 95th percentile, linear interpolation; null if `n_peak_jitter_records < N_MIN_JITTER` |
 | `loss_pct` | See 5.1 | `failures / (successes + failures) * 100` | **Ratio of sums:** `sum(failures) / sum(successes + failures) * 100` |
 | `n_peak_records` | `curr_udplatency` | Count of valid peak records (after the server rule) | Count |
+| `n_peak_jitter_records` | `curr_udpjitter` | Count of valid peak jitter records on the primary server | Count |
+| `n_days_above_threshold` (D-10) | `curr_udplatency.rtt_avg` | `rtt_avg / 1000 > latency_p95_ms` (base threshold) | Number of distinct dates with at least one such record |
+| `p95_latency_without_worst_day_ms` (D-10) | `curr_udplatency.rtt_avg` | `rtt_avg / 1000` | P95 after removing all peak records of the date with the most records above the threshold (ties: earliest date); equals `p95_latency_ms` if no record is above the threshold |
 
 - **Percentile:** linear interpolation (pandas `quantile(0.95)` default; equivalent to `PERCENTILE.INC` in Excel and Power BI, and to the default `List.Percentile` in Power Query).
 - **Ratio of sums:** weights each test by its number of packets. Averaging per-row percentages biases the result when the packet count varies.
-- **Jitter unit:** µs is plausible (0.2 to 55.7 ms after conversion) but not proven. Confirm before the final results.
+- **Jitter minimum (D-07):** `N_MIN_JITTER = 50` (set in `config.yaml`), peak jitter records on the primary server. A unit below it keeps its latency and loss metrics and stays in the denominator; its jitter is null, never 0, and the count of such units is reported with every result.
+- **Jitter unit:** µs, supported indirectly (section 2, item 9) and not documented by the FCC. Jitter is dominated by the upstream value (raw medians: `jitter_up` 1,220, `jitter_down` 86), so the average of both mostly reflects upload (section 11).
+- **Descriptive columns (D-10):** `n_days_above_threshold` and `p95_latency_without_worst_day_ms` are computed for every analyzed unit, on the same records as `p95_latency_ms`. They are not part of `risk_flag`.
 
 ### 5.1 Loss source
 
@@ -92,12 +101,12 @@ All metrics use **only records inside the peak window** and, in the base case, o
 
 ### 5.2 Data quality
 
-- **Invalid records** (excluded and counted, never corrected with caps): `successes + failures <= 0`; `loss_pct` outside [0, 100]; `rtt_avg` null or negative; `jitter_up` or `jitter_down` null or negative; `dtime` not parseable. Step 0 found 0 records for each rule.
-- **Forbidden:** capping values (`min(x, 100)`) and filling nulls with 0 (`fillna(0)`). An invented zero makes a unit without data look perfect.
-- **Duplicates (D-05):** key (`unit_id`, `dtime`, `target`). If the duplicate rows are identical, keep one; if they conflict, drop all of them. Every case is counted in the log. Found: `curr_udplatency` 16 rows in 7 groups, all exact; `curr_udpjitter` 10 rows, 8 exact and 2 conflicting (unit 943232).
-- **Minimum data (D-02):** a unit enters the risk analysis if `n_peak_records >= N_MIN`, with `N_MIN = 50` (set in `config.yaml`). The top 5% of 50 records contains at least 2.5 observations, the smallest sample where a P95 is still defensible. 8 units fall below it before the server rule and 19 after it, so **239 of 258 units** are analyzed.
+- **Invalid records** (excluded and counted, never corrected with caps): `successes + failures <= 0`; `loss_pct` outside [0, 100]; `rtt_avg` null or negative; `jitter_up` or `jitter_down` null or negative; `dtime` not parseable. Step 0 and `step_9.py` found 0 records for each rule.
+- **Forbidden:** capping values (`min(x, 100)`) and filling nulls with 0 (`fillna(0)`). An invented zero makes a unit without data look perfect. Counts (for example, 0 jitter records) are real counts and may be 0; metrics are never filled.
+- **Duplicates (D-05):** key (`unit_id`, `dtime`, `target`). If the duplicate rows are identical, keep one; if they conflict, drop all of them. Every case is counted in the log. Found: `curr_udplatency` 16 rows in 7 groups, all exact (9 extra rows removed); `curr_udpjitter` 10 rows, 8 exact (4 extra rows removed) and 2 conflicting (unit 943232, both dropped).
+- **Minimum data (D-02):** a unit enters the risk analysis if `n_peak_records >= N_MIN`, with `N_MIN = 50` (set in `config.yaml`), counted **after** the server rule. The top 5% of 50 records contains at least 2.5 observations, the smallest sample where a P95 is still defensible. Base case: 21 units fall below it, so **237 of 258 units** are analyzed (UTC reading: 19 below, 239 analyzed; 8 units fall below `N_MIN` before the server rule).
 - **Units without enough data:** listed in `data/processed/units_insufficient_data.csv` and left out of the risk denominator. Every report states `units_analyzed / 258`.
-- **Quality log:** the pipeline writes `data/processed/data_quality_log.csv` with the number of records discarded per rule and the duplicate counts.
+- **Quality log:** the pipeline writes `data/processed/data_quality_log.csv` with the number of records discarded per rule, the duplicate counts and the number of analyzed units with null jitter.
 
 ## 6. Risk Definition
 
@@ -110,29 +119,43 @@ All metrics use **only records inside the peak window** and, in the base case, o
 | `jitter_p95_ms` | 5 |
 | `loss_pct` | 1.0 |
 
-- **Rule:** `risk_flag = 1` if `p95_latency_ms > 20` **or** `p95_jitter_ms > 5` **or** `loss_pct > 1.0` (strictly greater). The individual flags (`flag_latency`, `flag_jitter`, `flag_loss`) are also stored to show which metric triggers the risk.
+- **Rule:** `risk_flag = 1` if `p95_latency_ms > 20` **or** `p95_jitter_ms > 5` **or** `loss_pct > 1.0` (strictly greater). A null jitter does not exceed any threshold. The individual flags (`flag_latency`, `flag_jitter`, `flag_loss`) are also stored to show which metric triggers the risk.
+- **Jitter stays in the rule (D-09):** no unit exceeds 5 ms in the base case (maximum 4.48 ms), and the jitter flag is 0 in every variant of section 7. The rule is not changed to match the results; the report states it.
 - **Severity tier:** `risk_severe = 1` if `loss_pct > 10` or `p95_latency_ms > 50` or `p95_jitter_ms > 15`.
+- **Episodic vs persistent (D-10):** a latency flag is described as *episodic* when `p95_latency_without_worst_day_ms <= latency_p95_ms`, and *persistent* otherwise. The wording is descriptive: it does not change `risk_flag` or any count. Base case: 5 at risk, 4 persistent and 1 episodic (unit 4190285, whose severe tier rests on an interpolated P95 of 50.00 ms).
 - Thresholds are not chosen to reproduce a previous result. Changing one requires a change in this specification and a Changelog entry.
 
 ## 7. Sensitivity Analysis (mandatory with every result)
 
-| Variant | What changes | Reference result (units flagged) |
-| :--- | :--- | ---: |
-| Base case | Local time + primary server | 10 |
-| UTC reading | `dtime + timezone_offset_dst`, primary server | 6 |
-| All servers | Local time, all servers pooled | pending (`step_9.py`) |
-| UTC reading, all servers | UTC reading, all servers pooled | 17 |
+All figures come from `step_9.py`, with `N_MIN = 50` applied and the same rules in every variant. Counts from `step_3.py` to `step_6.py` (10 / 6 / 17 / 22 flagged) did not apply `N_MIN` and are not comparable with this table.
 
-- The 10 and 6 come from `step_6.py` and the 17 from `step_5.py`; the figures are indicative until the pipeline reproduces them over the same units.
-- Six units change flag between the local and UTC readings: 943226, 1006958, 3798765, 4190285, 24840041 and 25314149 (5 flagged only under the local reading, 1 only under the UTC reading).
-- **Threshold grid:** % of units at risk for latency {20, 30, 50} ms × loss {0.5, 1, 2, 5} %. Global loss is about 0.022%, so the loss grid is reviewed against the per-unit loss distribution before it is frozen.
+| Variant | What changes | Analyzed | Insufficient | At risk |
+| :--- | :--- | ---: | ---: | ---: |
+| Base case | Local time + primary server | 237 | 21 | 5 |
+| All servers | Local time, all servers pooled | 248 | 10 | 21 |
+| UTC reading | `dtime + timezone_offset_dst`, primary server | 239 | 19 | 4 |
+| UTC reading, all servers | UTC reading, all servers pooled | 250 | 8 | 17 |
+
+- By metric (base case): latency 5, jitter 0, loss 1 (unit 24840041), severe 1 (unit 4190285). The jitter flag is 0 in all four variants.
+- Between the local and UTC readings (both with the primary server), 12 units change status: 5 change `risk_flag` (943226, 4190285 and 24840041 only under the local reading; 1006958 and 3892905 only under the UTC reading) and 7 change only their qualification against `N_MIN` (925928, 942200, 1000161, 3799009, 3814781, 24559133, 55105449).
+- **Additional variants** (base case with one change):
+
+| Variant | At risk |
+| :--- | ---: |
+| Jitter on its own primary server (D-06 alternative; unit 3798765 enters) | 6 |
+| Jitter evaluated only with at least `N_MIN_JITTER` records (D-07; base rule) | 5 |
+| Persistence criterion (minimum days above the threshold; D-10 alternative) | 4 |
+
+- **Grid (D-08):** units at risk (and % of analyzed units) for latency {20, 30, 50} ms × jitter {3, 4, 5} ms × loss {0.05, 0.1, 0.5, 1.0} % × `N_MIN` {30, 50, 100}, around the base case. The base thresholds do not change (D-09). Reference `N_MIN` results (analyzed / insufficient / at risk): 30 → 253 / 5 / 7; 50 → 237 / 21 / 5; 100 → 89 / 169 / 1.
+- Per-unit distributions used to choose the grid (base case, 237 analyzed): loss median 0.007%, P99 0.43%, maximum 1.66% (units above 0.05 / 0.1 / 0.5 / 1 / 2 / 5%: 18 / 10 / 2 / 1 / 0 / 0); P95 jitter median 1.00 ms, maximum 4.48 ms (units above 3 / 4 / 5 ms: 10 / 3 / 0).
+- The result is sensitive to `N_MIN` (1 to 7 units at risk). The report gives the base figure together with this range.
 
 ## 8. Reconciliation Python ↔ Power BI
 
 Power BI consumes `data/processed/ftth_qoe_unit_metrics.csv` generated by Python. If a metric is reimplemented in Power Query for audit:
 
 1. Export both tables and join by `Unit ID`.
-2. Tolerances: `p95_latency_ms` and `p95_jitter_ms` ±0.001 ms; `loss_pct` ±0.001 percentage points; `risk_flag` exact match; same number of units.
+2. Tolerances: `p95_latency_ms`, `p95_jitter_ms` and `p95_latency_without_worst_day_ms` ±0.001 ms; `loss_pct` ±0.001 percentage points; `risk_flag`, `n_peak_records`, `n_peak_jitter_records` and `n_days_above_threshold` exact match; same number of units; null jitter in the same units.
 3. Units that differ are analyzed one by one (window, time convention, server rule, nulls); reconciliation is never done by totals only.
 4. The result is saved in `docs/reconciliation.md`.
 
@@ -142,14 +165,16 @@ Power Query equivalent of the base peak window: `Time.Hour([dtime]) >= 19 and Ti
 
 `data/processed/ftth_qoe_unit_metrics.csv` (UTF-8, no version in the name; versions live in git tags):
 
-`unit_id, isp, state, census, download_mbps, upload_mbps, whitebox_model, primary_target, n_peak_records, p95_latency_ms, p95_jitter_ms, loss_pct, flag_latency, flag_jitter, flag_loss, risk_flag, risk_severe`
+`unit_id, isp, state, census, download_mbps, upload_mbps, whitebox_model, primary_target, n_peak_records, n_peak_jitter_records, p95_latency_ms, p95_jitter_ms, loss_pct, n_days_above_threshold, p95_latency_without_worst_day_ms, flag_latency, flag_jitter, flag_loss, risk_flag, risk_severe`
 
 Automated tests (`tests/`):
 
 - `unit_id` is unique and a subset of `fiber_units.csv`.
-- 0 nulls in the metrics of analyzed units.
+- `n_peak_records >= N_MIN` for every unit in the file.
+- 0 nulls in `p95_latency_ms` and `loss_pct`; `p95_jitter_ms` is null if and only if `n_peak_jitter_records < N_MIN_JITTER`.
 - `0 <= loss_pct <= 100`; `p95_latency_ms > 0`.
 - `risk_flag == (flag_latency | flag_jitter | flag_loss)`.
+- `n_days_above_threshold >= 0`; `p95_latency_without_worst_day_ms <= p95_latency_ms`.
 - `analyzed + insufficient == 258`.
 - The 27 units in `excluded_legacy_ftth_units.csv` are contained in `excluded_legacy_units.csv`, and none of them is in `fiber_units.csv`.
 
@@ -163,12 +188,24 @@ Automated tests (`tests/`):
 - Two months of data (2022-09-12 to 2022-10-31) from a non-random sample of volunteer units; results do not represent all FTTH subscribers.
 - 220 of the 258 units (85%) are in the US Eastern time zone.
 - Hardware is filtered by the nominal capability of each model, not by a per-unit throughput test.
-- The local-time reading of `dtime` rests on indirect evidence and contradicts the FCC general note; the UTC reading is reported as a sensitivity.
+- The local-time reading of `dtime` rests on indirect evidence and contradicts the FCC general note; the UTC reading is reported as a sensitivity. Fiber was not tested (only 18 Pacific units).
 - Thresholds are project-defined and their sensitivity is part of the reported results.
-- The jitter unit is not proven.
+- The jitter unit (µs) is supported by indirect evidence only. The observed test `duration` (about 15 s) differs from the documented 10 s. Jitter is dominated by the upstream value, so the average of upstream and downstream mostly reflects upload.
+- Jitter is evaluated for 144 of the 237 analyzed units (61%); the other 93 have fewer than 50 peak jitter records and a null jitter (D-07).
+- The count of units at risk is sensitive to `N_MIN` (7 / 5 / 1 for `N_MIN` 30 / 50 / 100). Units 943226 and 24733221 stay close to the latency threshold (22.9 and 24.0 ms without their worst day) with only 53 and 59 peak records.
+- One of the 5 units at risk (4190285) is an episode of a single day (2022-10-23) that is not a server event; its cause cannot be determined from these data (D-10).
 
 ## 12. Changelog
 
+- **1.2.0** (2026-10-15): decisions D-06 to D-10 and the results of `step_9.py`, `step_10.py` and `step_11.py` incorporated.
+  - One server rule for all metrics: the latency primary server is used for latency, loss and jitter (D-06, section 4).
+  - Jitter evaluated only with at least 50 peak jitter records on the primary server; otherwise null (D-07, section 5). `n_peak_jitter_records` added to the dataset to make the rule auditable.
+  - Sensitivity grid replaced: latency × jitter × loss × `N_MIN` (D-08, section 7). The loss grid {0.5, 1, 2, 5} % is removed.
+  - Base thresholds unchanged; jitter stays in the rule (D-09, section 6).
+  - Descriptive columns `n_days_above_threshold` and `p95_latency_without_worst_day_ms` and the episodic/persistent wording added; risk rule unchanged (D-10, sections 5, 6, 9).
+  - Sensitivity matrix recomputed with `N_MIN` applied (237 / 21 / 5; 248 / 10 / 21; 239 / 19 / 4; 250 / 8 / 17) and the 12 units that change status listed (section 7).
+  - Check 6 closed (50 to 2,401 packets per row); jitter unit supported indirectly; limitations and tests updated.
+  - Reconciliation tolerances extended to the new columns.
 - **1.1.0** (2026-10-11): translated to English; text recovered from v1.0.1 (commit `5cecc72`) after `metrics_spec.md` was overwritten by the data dictionary in commit `c8fcc37`.
   - Analysis period set to 2022-09-12 to 2022-10-31 (D-01).
   - `N_MIN = 50` (D-02).
@@ -183,8 +220,8 @@ Automated tests (`tests/`):
 
 ## 13. Open Items
 
-- **Primary server in the jitter file:** `step_5.py` and `step_6.py` define the primary server from the records of the file being processed. Confirm that the jitter metric uses the primary server of its own file and not the latency primary target, and state it here.
-- **`N_MIN` on jitter:** `N_MIN` is applied to `curr_udplatency` peak records. Decide whether a minimum is also required for jitter records.
-- **Loss grid:** review the {0.5, 1, 2, 5} % values against the per-unit loss distribution.
-- **Check 6:** distribution of `successes + failures`.
-- **Sensitivity matrix:** compute the "local time + all servers" cell (`step_9.py`).
+- **`config.yaml`:** add `N_MIN_JITTER = 50`, replace the loss grid with the D-08 grids, and add the two D-10 columns. Update it in the same commit as this version.
+- **`step_9.py`:** the base case runs without a jitter minimum (`jit_min=0`). The result is the same (diagnostic 6), but `pipeline.py` must apply D-07 explicitly.
+- **`docs/data_dictionary.md` and `docs/data_inspection.md`:** record check 6 and the jitter unit evidence; the latter still lists every check as pending.
+- **Jitter test length:** observed `duration` (about 15 s) against the documented 10 s.
+- **Fiber time convention:** the local reading was not tested on Fiber (18 Pacific units).
