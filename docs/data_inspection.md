@@ -1,36 +1,38 @@
 # Data Inspection — Step 0 Results
 
-**Status:** completed (checks 2 and 3 partly done, optional) · **Last updated:** 2026-10-15
+**Status:** Step 0 closed. Two checks are only partial (2 and 3) and the `sp1` / `sp2` interpretation is still open (section 5). · **Last updated:** 2026-10-17
 **Scope:** the three raw FCC MBA files used in this project, restricted to the 258 FTTH units in `data/fiber_units.csv`.
-**Related documents:** `docs/metrics_spec.md` (Step 0 checklist), `docs/data_dictionary.md` (official definitions), `docs/decisions.md` (decisions D-01 to D-10), `data/CSV_previews.md` (first rows of each file).
+**Related documents:** `docs/metrics_spec.md` (section 2, Step 0 summary), `docs/data_dictionary.md` (official definitions), `docs/decisions.md` (D-01 to D-10), `data/CSV_previews.md` (first rows of each file).
 
-Results below come from the numbered scripts in `src/steps/` (`step_0.py` to `step_11.py`, pandas). Each script records its console output in its `OUTPUT` docstring. Items marked **Pending** are not yet verified.
+Results come from the scripts in `src/steps/` (pandas only), which print their findings to the console and keep the recorded output in an `OUTPUT` docstring. Each check below names its script.
 
 ---
 
-## 1. Coverage of the 258 FTTH Units
+## 1. Coverage of the 258 FTTH Units (`step_0.py`)
 
-| File | Rows | Rows after duplicates (`step_9.py`) | Units with data | First `dtime` | Last `dtime` |
-| :--- | ---: | ---: | ---: | :--- | :--- |
-| `curr_udplatency.csv` | 172,800 | 172,791 | 258 of 258 | 2022-09-12 00:00:05 | 2022-10-31 23:59:58 |
-| `curr_udpjitter.csv` | 152,730 | 152,724 | 258 of 258 | 2022-09-12 00:00:16 | 2022-10-31 23:59:42 |
-| `curr_udpcloss.csv` | 4,919 | not applicable | 242 of 258 | 2022-09-12 00:10:17 | 2022-10-31 23:49:37 |
+| File | Rows | Units with data | First `dtime` | Last `dtime` |
+| :--- | ---: | ---: | :--- | :--- |
+| `curr_udplatency.csv` | 172,800 | 258 of 258 | 2022-09-12 00:00:05 | 2022-10-31 23:59:58 |
+| `curr_udpjitter.csv` | 152,730 | 258 of 258 | 2022-09-12 00:00:16 | 2022-10-31 23:59:42 |
+| `curr_udpcloss.csv` | 4,919 | 242 of 258 | 2022-09-12 00:10:17 | 2022-10-31 23:49:37 |
+
+| File | Rows 2022-09 (from the 12th) | Rows 2022-10 | Rows per unit: mean / median / min / max |
+| :--- | ---: | ---: | :--- |
+| `curr_udplatency.csv` | 46,205 | 126,595 | 670 / 722 / 7 / 769 |
+| `curr_udpjitter.csv` | 40,862 | 111,868 | 592 / 643 / 35 / 720 |
+| `curr_udpcloss.csv` | 1,265 | 3,654 | 20 / 6 / 1 / 874 |
 
 **Findings**
 
-- **Analysis period:** 2022-09-12 to 2022-10-31, **50 days (1,200 hours)**. The data is not limited to September, although the archive is named `validated-data-sept2022`.
-- **Daylight saving time:** the US DST period ended on 2022-11-06, so the whole analysis period is under DST. `timezone_offset_dst` therefore applies to every row (the three offset pairs in the population are Eastern −5/−4, Central −6/−5 and Pacific −8/−7, and no unit is in a state without DST).
-- **`curr_udpcloss` covers 242 units.** The other 16 units have no outage events in the period. Absence of rows means "no events recorded", which cannot be distinguished from "no data" without checking the other two files.
-- **Row counts per unit:**
-  - `curr_udplatency`: mean 670, median 722, minimum 7, maximum 769 over 1,200 possible hours, so more than half of the hours have a recorded test (the files contain validated data only).
-  - `curr_udpjitter`: mean 592, median 642.5, minimum 35, maximum 720.
-  - `curr_udpcloss`: mean 20.3, median 6, maximum 874 (event-based).
-- **Rows per month are uneven.** `curr_udplatency`: 46,205 in September (19 days, about 2,430 per day) and 126,595 in October (31 days, about 4,080 per day), about 1.7 times more per day. `curr_udpjitter` shows the same pattern (40,862 and 111,868). The cause is not known. It does not affect the rules, but September alone would give few records per unit (D-01).
-- **Duplicates and invalid records:** see check 1 in section 4.
+- **Analysis period:** 2022-09-12 to 2022-10-31, **50 days (1,200 hours)**. The data is not limited to September, although the archive is named `validated-data-sept2022` (D-01).
+- **Daylight saving time:** the US DST period ended on 2022-11-06, so the whole analysis period is under DST. `timezone_offset_dst` therefore applies to every row (the three offset pairs in the population are Eastern −5/−4, Central −6/−5 and Pacific −8/−7, and no unit is in a state without DST). The 258 units split as −4: 220, −5: 20, −7: 18.
+- **`curr_udpcloss` covers 242 units.** The other 16 units have no outage events in the period. Absence of rows means "no events recorded", which cannot be distinguished from "no data" without checking the other two files; every one of the 258 units has rows in the latency and jitter files.
+- **Row counts per unit:** `curr_udplatency` has about 670 rows per unit on average over 1,200 possible hours, so roughly half of the hours have a recorded test (the files contain validated data only). The total, 172,800, is a round figure. Duplicates were checked (check 1); gaps by hour were not analyzed.
+- **Units with very few rows:** the minimum is 7 latency rows for a unit; the peak-window count per unit is what matters for scoring, handled by `N_MIN` (D-02).
 
-## 2. `target` Values (258 FTTH units)
+## 2. `target` Values in `curr_udplatency` (258 FTTH units)
 
-All targets in `curr_udplatency` are SamKnows-hosted servers (`spN-vm-<city>-us.samknows.com`). None is hosted by the ISP.
+All latency targets are SamKnows-hosted servers (`spN-vm-<city>-us.samknows.com`). None is hosted by the ISP.
 
 | ISP | Units | Rows | Main targets (units) |
 | :--- | ---: | ---: | :--- |
@@ -42,32 +44,38 @@ Minor targets (a few units each): Cincinnati Bell (Seattle, New York), Frontier 
 
 **Findings**
 
-- **Units use several targets.** A unit uses 1, 2, 3 or 4 servers (68, 131, 45 and 14 units). Units per target add up to more than the units per ISP (Cincinnati Bell: 300 target-unit pairs for 120 units; Verizon: 153 for 76; Frontier: 68 for 62). A unit's rows are split across targets.
-- **The target depends on where the unit is.** Frontier units use Miami, Dallas and Los Angeles; Cincinnati Bell units use Chicago, Atlanta and Ashburn; Verizon units use New York and Ashburn. RTT depends on distance to the server, so a single absolute latency threshold would mix **distance** with **congestion**. The primary-server rule (D-04, D-06) removes the mixing between servers of the same unit; it does not remove the difference in distance between units.
-- **`curr_udpjitter` uses the same family of servers.** Its ten most frequent targets (99.97% of its rows) are SamKnows-hosted `sp1` / `sp2` servers.
-- **`curr_udpcloss` includes ISP-hosted targets** (`samk01.lsan.ca.frontiernet.net`, `samk01.asbn.va.frontiernet.net`, `newyorkfcc.west.verizon.net`, `restonfcc.west.verizon.net`): at least 1,898 of its 4,919 rows (39%) among its ten most frequent targets. This file is not used for risk in v3.0 (outage events, see `metrics_spec.md` section 5.1).
-- **The on-net / off-net distinction is not visible in the latency and jitter target names.** The MBA documentation says one on-net and one off-net node are tested hourly. Here no latency target identifies an ISP-hosted server (the Cable unit preview used `...-on.east.cox.net`). Interpretation of `sp1` vs `sp2` is **Pending**.
+- **Units use several targets.** Units per target add up to more than the units per ISP (Cincinnati Bell: 300 target-unit pairs for 120 units; Verizon: 153 for 76; Frontier: 68 for 62). A unit's rows are split across targets: 68, 131, 45 and 14 units use 1, 2, 3 and 4 targets.
+- **The target depends on where the unit is.** Frontier units use Miami, Dallas and Los Angeles; Cincinnati Bell units use Chicago, Atlanta and Ashburn; Verizon units use New York and Ashburn. RTT depends on distance to the server, so a single absolute latency threshold would mix **distance** with **congestion**. The server rule (D-04, D-06) addresses this by using one server per unit.
+- **Mixing servers changes results.** In the 5 units with the largest difference, the median RTT between servers of the same unit differs by up to 52 ms (unit 24559133: Seattle 65.5 ms against about 13.7 ms for the other three). Pooling all servers changes the P95 latency by more than 1 ms in 38 units and by more than 3 ms in 22 units (`step_5.py`, UTC reading). The primary server holds on average 78.1% of a unit's peak records (median 77.7%, minimum 37.8%; 257 units with peak records, UTC reading; `step_2.py`).
+- **The on-net / off-net distinction is not visible in the latency and jitter targets.** The MBA documentation says one on-net and one off-net node are tested hourly. Among the 10 most frequent latency and jitter targets, none identifies an ISP-hosted server. ISP-hosted names do appear in `curr_udpcloss` (check 5). Interpretation of `sp1` vs `sp2` is still open (section 5).
 
 ## 3. Implications for the Specification
 
 | Topic | Implication | Decision |
 | :--- | :--- | :--- |
-| Analysis period | 50 days, Sept–Oct 2022 | Done: D-01, period updated in the spec and config |
-| `timezone_offset_dst` | Valid for the whole period | Superseded by D-03: `dtime` is read as local time; the offsets are kept only for the UTC sensitivity |
-| Latency metric | Distance to target affects absolute RTT | Not part of v3.0: a baseline-adjusted latency (for example, peak P95 minus the unit-target off-peak median) was not adopted. D-04 and D-06 control for distance between servers of the same unit; the remaining distance effect between units stays as a limitation |
-| `target` handling | Several targets per unit | Done: D-04 (primary server, one per unit) and D-06 (same server for latency, loss and jitter) |
-| Availability from `curr_udpcloss` | Missing rows mean "no events" | Optional metric, outside v3.0; handle units without rows explicitly if added |
+| Analysis period | 50 days, Sept–Oct 2022 | Adopted: 2022-09-12 to 2022-10-31 (D-01) |
+| `timezone_offset_dst` | Valid for the whole period | Not used in the base case: `dtime` behaves as local time, offsets only in the UTC sensitivity (D-03) |
+| Latency metric | Distance to target affects absolute RTT | One server per unit (D-04, D-06). A baseline-adjusted latency (peak P95 minus the unit-target off-peak median) is not part of the v3 specification |
+| `target` handling | Several targets per unit | Adopted: the primary server of the latency file for all metrics (D-04, D-06); all servers as sensitivity |
+| Availability from `curr_udpcloss` | Missing rows mean "no events" | Optional future metric, outside `risk_flag` (spec section 5.1) |
+| Duplicates and invalid records | See check 1 | Duplicate policy (D-05); invalid records excluded and counted, none found |
 
-## 4. Check Results
+## 4. Checks
 
 | # | Check | Status | Result |
 | :--- | :--- | :--- | :--- |
-| 1 | Duplicates on (`unit_id`, `dtime`, `target`); nulls; `successes + failures` distribution | Done | Latency: 16 rows in 7 groups, all exact (9 extra rows removed). Jitter: 10 rows, 8 exact (4 extra removed) and 2 conflicting (unit 943232, both dropped). 0 invalid records in both files (nulls or negatives in `rtt_avg`, `jitter_up`, `jitter_down`; loss outside [0, 100]). `successes + failures` per row (172,791 rows): mean 1,736.6, minimum 50, P1 65, P5 231, median 2,065, P95 2,303, P99 2,356, maximum 2,401 |
-| 2 | Targets per unit, and whether each unit keeps the same targets over time | Partly done | Targets per unit: 1 to 4 (68, 131, 45, 14 units). Stability of each unit's targets over time not checked: the primary server is chosen over the whole period |
-| 3 | Median and P95 `rtt_avg` by target | Pending (optional) | Not required by D-04 or D-06. Median RTT per unit is 2.5 to 17.2 ms (`step_1.py`) |
-| 4 | Mean RTT by hour using raw `dtime`, `dtime + timezone_offset` and `dtime + timezone_offset_dst` | Done | FTTH only (`step_0.py`): raw `dtime` gives a maximum at hour 21 (11.40 ms) and a minimum at hour 16 (10.99 ms); with the standard or DST offset the maximum moves to hours 16 to 17 (11.36 ms). The FTTH range is only about 0.4 ms, so it is not enough alone. The decision rests on the Eastern vs Pacific comparison for Cable and DSL (`step_7.py`, `step_8.py`): D-03 |
-| 5 | Targets in `curr_udpjitter.csv` and `curr_udpcloss.csv` for the 258 units | Done | See section 2. Jitter uses the same SamKnows servers; `curr_udpcloss` also has ISP-hosted targets |
-| 6 | Loss per unit (`sum(failures) / sum(successes + failures)`), all hours and peak hours | Done for peak hours | Base case, 237 analyzed units (`step_9.py`): median 0.007%, mean 0.029%, P90 0.04%, P99 0.43%, maximum 1.66%. Units above 0.05 / 0.1 / 0.5 / 1%: 18 / 10 / 2 / 1. The all-hours distribution was not computed |
-| 7 | Jitter unit confirmed from the distribution of `jitter_up` / `jitter_down` | Supported, not proven | Per-unit median jitter 0.70 ms against median `rtt_std` 0.96 ms if both are µs (median ratio 0.83, Spearman 0.816, `step_10.py`). Raw maxima: `jitter_up` 580,881 and `jitter_down` 428,137; raw medians 1,220 and 86, so the average mostly reflects upstream. Observed `duration` (about 15 s) differs from the documented 10 s (open) |
+| 1 | Duplicates on (`unit_id`, `dtime`, `target`); nulls; `successes + failures` distribution | **Done** | Duplicates: latency 16 rows in 7 groups, all exact (9 extra rows); jitter 10 rows, 8 exact and 2 conflicting (unit 943232) (`step_4.py`). Nulls or negatives: 0 in `rtt_avg`, `jitter_up` and `jitter_down`; `successes + failures <= 0`: 0; loss outside [0, 100]: 0 (`step_2.py`, `step_9.py`). `successes + failures` per row: min 50, P1 65, P5 231, median 2,065, P95 2,303, max 2,401, mean 1,737 (`step_9.py`), which supports the ratio of sums |
+| 2 | Targets per unit, and whether each unit keeps the same targets over time | **Partial** | Targets per unit: 68, 131, 45 and 14 units use 1, 2, 3 and 4. Stability over time was not tested; the primary server is defined over the whole period |
+| 3 | Median and P95 `rtt_avg` by target | **Partial** | No table by target. Server mixing was quantified per unit instead (section 2; `step_2.py`, `step_5.py`) |
+| 4 | Mean relative RTT by hour using raw `dtime`, `dtime + timezone_offset` and `dtime + timezone_offset_dst` | **Done, inconclusive alone** | September only, all units pooled, the mean `rtt_avg` varies by at most 0.4 ms across hours under any reading (UTC 10.99–11.40, standard 11.02–11.36, DST 11.02–11.36 ms), so no reading shows a clear evening peak. The question was settled by comparing Eastern and Pacific profiles (`step_7.py`, `step_8.py`; D-03): `dtime` behaves as local time. The evidence is indirect |
+| 5 | Targets in `curr_udpjitter.csv` and `curr_udpcloss.csv` for the 258 units | **Done** (10 most frequent targets) | Jitter: SamKnows-hosted servers only. Outage events (`curr_udpcloss`): also ISP-hosted servers (`samk01.lsan.ca.frontiernet.net` 762, `newyorkfcc.west.verizon.net` 610, `restonfcc.west.verizon.net` 321, `samk01.asbn.va.frontiernet.net` 205 of 4,919 rows) |
+| 6 | Loss per unit (`sum(failures) / sum(successes + failures)`), all hours and peak hours | **Done for the peak window** | Global loss 0.022% (all hours); 8.1% of latency rows have `failures > 0` (`step_2.py`). Per unit, peak window, base case (237 analyzed): median 0.007%, P99 0.43%, maximum 1.66%; units above 0.05 / 0.1 / 0.5 / 1%: 18 / 10 / 2 / 1 (`step_9.py`). Per unit for all hours was not computed |
+| 7 | Jitter unit confirmed from the distribution of `jitter_up` / `jitter_down` | **Supported, not proven** | Per-unit median jitter 0.70 ms against median `rtt_std` 0.96 ms (median ratio 0.83, Spearman 0.816, 258 units; `step_10.py`), consistent with microseconds. Raw medians: `jitter_up` 1,220, `jitter_down` 86, so the average of both mostly reflects upstream. No documentation states the unit |
 
-Pending items that remain: interpretation of `sp1` vs `sp2`, stability of targets over time (check 2), median and P95 by target (check 3, optional) and the all-hours loss distribution (check 6, optional).
+## 5. Open Items
+
+- **Check 2:** whether each unit keeps the same servers over time.
+- **Check 3:** median and P95 `rtt_avg` by target, as a table.
+- **`sp1` vs `sp2`:** meaning of the two servers per city (for example Chicago `sp1` and `sp2`), and whether any latency or jitter target is on-net.
+- **Jitter test length:** the observed `duration` (about 15 s) differs from the documented 10 s.
+- **Gaps by hour:** coverage over the 1,200 hours was not analyzed.
